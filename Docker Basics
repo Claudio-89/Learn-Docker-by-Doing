@@ -1,0 +1,150 @@
+####################################
+Running Your First Docker Container
+####################################
+
+## Install Docker from the Default CentOS 7 Repository ##
+
+Install the latest version of Docker using yum:
+
+$ sudo yum -y install docker
+
+## Set User Permissions ##
+
+Drop down to root:
+
+$ sudo -i
+
+Create a new group named docker:
+
+$ groupadd docker
+
+Add the cloud_user user to the group:
+
+$ usermod -aG docker cloud_user
+
+## Enable and Start Docker Service ##
+
+Enable and start the Docker service:
+
+$ systemctl enable --now docker
+
+Back out of root:
+
+$ logout
+
+Log out of the cloud_user session:
+
+$ logout
+
+Log back in:
+
+$ ssh cloud_user@18.209.221.54
+
+## Run the hello-world Container Image ##
+
+Run the hello-world container image to verify installation:
+
+$ docker run docker.io/hello-world
+
+## Pull Images ##
+
+Pull the following images into your Docker repository to prepare for the next exercise:
+
+$ docker pull 06kellyjac/nyancat
+
+$ docker pull jeremy646/doge
+
+############################################
+Deploying a Static Website to the Container 
+############################################
+
+## Pull Spacebones Image ##
+
+$ docker pull spacebones/doge
+
+## Start the Website Container and Redirect HTTP Port 80 to the Host ##
+
+$ docker run -d --name treatseekers -p 80:80 spacebones/doge
+
+## Verify it is running ##
+
+$ docker ps # Which will tell you the container, name and port that is currently running
+
+
+##########################
+Building Container Images
+##########################
+In this activity, you are tasked with migrating the SpaceBones official Government website from Ubuntu to CentOS 6 by preparing a CentOS 6 image found on DockerHub to run Apache. Use the website contents found in the content-dockerquest-spacebones GitHub repository (specifically contents found under the /doge/ directory) to recreate the website on CentOS
+
+## Check current images ##
+
+$ docker images
+
+## After verifying the lack of centos:6, pull the centos:6 Docker image ##
+
+$ docker pull centos:6
+
+## Once the pull completes, start the Docker container in interactive mode, name it 'websetup' ##
+
+docker run -it --name websetup centos:6 /bin/bash
+
+## Update the system, then install Apache & Git ##
+
+$ yum -y update
+$ yum -y install httpd git
+
+## Once installation completes, clone the content-dockerquest-spacebones repository, then copy the contents of the /doge/ subdirectory to /var/www/html ##
+
+$ git clone https://github.com/linuxacademy/content-dockerquest-spacebones
+$ cp content-dockerquest-spacebones/doge/* /var/www/html
+
+## In order for the site to display correctly, rename the default welcome.conf file to welcome.conf.bak ##
+
+$ mv /etc/httpd/conf.d/welcome.conf /etc/httpd/conf.d/welcome.conf.bak
+
+## Enable & start the Apache service, then exit the container environment ##
+
+$ chkconfig httpd on && service httpd start
+$ exit
+
+## Save the edited image ##
+
+$ docker commit websetup spacebones:thewebsite
+
+
+##################################
+Dockerizing a node.js application
+##################################
+Using the example Dockerfile included in activity instructions, use Docker to build a new Node.js app image using the files under the content-dockerquest-spacebones/nodejs-app subdirectory, named baconator. Be sure to tag the image as dev
+
+## Clone the content-dockerquest-spacebones GitHub repo ##
+
+$ git clone https://github.com/linuxacademy/content-dockerquest-spacebones
+
+## Move into the nodejs-app subdirectory ##
+
+$ cd ~/content-dockerquest-spacebones/nodejs-app
+
+## Use the Dockerfile below to build a new image ##
+
+$ vim Dockerfile
+
+## Dockerfile content ##
+
+FROM node:7
+WORKDIR /app
+COPY package.json /app
+RUN npm install
+COPY . /app
+CMD node index.js
+EXPOSE 8081
+
+## Build container image ##
+
+$ docker build -t baconator:dev .
+
+## Run the image to verify functionality ##
+
+$ docker run -d -p 80:8081 baconator:dev
+$ curl http://localhost/
+
