@@ -1,0 +1,96 @@
+######################################
+Optimizing Docker Builds with OnBuild
+######################################
+Using the Dockerfile stored under ~/content-dockerquest-spacebones/salt-example/salt-master/, create a new parent image for the salt-master Docker container named tablesalt:master. All commands on docker-entrypoint.sh should only execute on CHILD images
+
+## Check if docker is running ##
+
+$ docker ps
+
+## CD into the folder and add ONBUILD to the Dockerfile against docker-entrypoint.sh ##
+
+$ cd content-dockerquest-spacebones/salt-example/salt-master/
+$ cat Dockerfile
+FROM jarfil/salt-master-mini:debian-stretch
+
+MAINTAINER Jaroslaw Filiochowski <jarfil@gmail.com>
+
+COPY . /
+
+RUN apt-get -y update && \
+        apt-get -y upgrade && \
+        apt-get -y install \
+                salt-minion \
+                salt-ssh \
+                salt-cloud && \
+        apt-get -y autoremove && \
+        apt-get clean && \
+        rm -rf /var/lib/apt/lists/
+
+RUN chmod +x \
+        /docker-entrypoint.sh
+
+EXPOSE 4505 4506
+
+CMD /docker-entrypoint.sh
+
+$ vim Dockerfile
+$ cat Dockerfile
+FROM jarfil/salt-master-mini:debian-stretch
+
+MAINTAINER Jaroslaw Filiochowski <jarfil@gmail.com>
+
+COPY . /
+
+RUN apt-get -y update && \
+        apt-get -y upgrade && \
+        apt-get -y install \
+                salt-minion \
+                salt-ssh \
+                salt-cloud && \
+        apt-get -y autoremove && \
+        apt-get clean && \
+        rm -rf /var/lib/apt/lists/
+
+ONBUILD RUN chmod +x \
+        /docker-entrypoint.sh
+
+EXPOSE 4505 4506
+
+ONBUILD CMD /docker-entrypoint.sh
+
+## Now Build the image and check if it is all good ##
+
+$ docker build -t tablesalt:master .
+$ docker images
+REPOSITORY                          TAG                 IMAGE ID            CREATED             SIZE
+tablesalt                           master              a43168df7b09        7 seconds ago       491 MB
+
+###################################
+Ignoring Files During Docker Build
+###################################
+As our resident Docker expert, President Squawk & the Radar Board have requested your aid in "ignoring" a few configuration files in the ~/content-dockerquest-spacebones/salt-example/salt-master/ directory. Populate the included .dockerignore file to prevent docker build from including incorrect or unneeded files in the build. Once complete, only docker-entrypoint.sh should live on the new image.
+
+Once you have populated .dockerignore, build a new Docker container image named salt-master with the tag :deb
+
+## Check if Docker is running and go to the folder salt-master ##
+
+$ docker ps
+$ cd content-dockerquest-spacebones/salt-example/salt-master/
+$ ls
+badscript.sh  docker-entrypoint.sh  Dockerfile  README.md  supervisor-salt.conf  supervisor-salt-orig.conf
+
+## Create .dockerignore ##
+
+$ vim .dockerignore
+$ cat .dockerignore
+badscript.sh
+*.conf
+README.md
+
+## Build docker image ##
+
+$ build -t salt-master:deb .
+$ docker images
+REPOSITORY                          TAG                 IMAGE ID            CREATED             SIZE
+salt-master                         deb                 750e2b3526cd        10 seconds ago      491 MB
