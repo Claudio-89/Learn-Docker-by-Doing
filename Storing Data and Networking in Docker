@@ -1,0 +1,230 @@
+#########################
+Creating Data Containers
+#########################
+Use the spacebones/postgres image to create a data container named boneyard as well as three running app containers with the following names:
+cheese
+bacon
+tuna
+
+## Create postgres data container ## 
+
+$ docker create -v /data --name boneyard spacebones/postgres /bin/true
+
+## Mount boneyard on 3 containers ##
+
+$ docker run -d --volumes-from boneyard --name cheese spacebones/postgres
+$ docker run -d --volumes-from boneyard --name tuna spacebones/postgres
+$ docker run -d --volumes-from boneyard --name bacon spacebones/postgres
+
+################################
+Container Networking with Links
+################################
+We've got to create a network for transporting secure information between the official SpaceBones website and the backend database. We're going to do it using legacy Docker links.
+
+## Make sure Docker is running ##
+
+$ docker ps
+
+## Create the SpaceBones Container ##
+
+$ docker run -d -p 80:80 --name spacebones spacebones/spacebones:thewebsite
+
+## Create the Treatlist Container ##
+
+Now we're going to create the container that will hold the database, and make it link the spacebones and postgres (an image that was already sitting there in our home directory).
+
+$ docker run -d -P --name treatlist --link spacebones:spacebones spacebones/postgres
+
+## Verify That the Link Works ##
+
+$ docker inspect -f "{{ .HostConfig.Links }}" treatlist
+
+<<<
+
+[cloud_user@ip-10-0-1-204 ~]$ docker ps
+CONTAINER ID        IMAGE                              COMMAND                  CREATED             STATUS              PORTS                     NAMES
+2d44ad8d4382        spacebones/postgres                "su postgres -c '/..."   8 minutes ago       Up 8 minutes        0.0.0.0:32768->5432/tcp   treatlist
+a2d609610ff8        spacebones/spacebones:thewebsite   "/httpd.sh"              13 minutes ago      Up 13 minutes       0.0.0.0:80->80/tcp        spacebones
+[cloud_user@ip-10-0-1-204 ~]$ docker inspect -f "{{ .HostConfig.Links }}" treatlist
+[/spacebones:/treatlist/spacebones]
+
+>>>
+
+###################################
+Container Networking with Networks
+###################################
+Using the details below, create a new Docker network named borkspace using the 192.168.10.0/24 network range, with the gateway IP address 192.168.10.250. Once the borkspace network is created, use it to launch a new app named treattransfer in interactive mode using the spacebones/nyancat:latest. Once the container is running, you should see a live view of Droolidian cadets running to the rescue!
+
+ssh cloud_user@184.73.46.195
+The authenticity of host '184.73.46.195 (184.73.46.195)' can't be established.
+ECDSA key fingerprint is SHA256:f9Dy0JYQG7KaJJPMZil1ybNZS8k8UXGuji1yfK7wTNk.
+Are you sure you want to continue connecting (yes/no)? yes
+Warning: Permanently added '184.73.46.195' (ECDSA) to the list of known hosts.
+Password:
+
+## Checks ##
+
+[cloud_user@ip-10-0-1-23 ~]$ docker ps
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS              PORTS               NAMES
+[cloud_user@ip-10-0-1-23 ~]$ docker network ls
+NETWORK ID          NAME                DRIVER              SCOPE
+3f2660dc2ad3        bridge              bridge              local
+640e8e8560d9        host                host                local
+1cf7547ab8e0        none                null                local
+[cloud_user@ip-10-0-1-23 ~]$ docker network inspect bridge
+[
+    {
+        "Name": "bridge",
+        "Id": "3f2660dc2ad367ff8ff3e976bb50c0e323e4166fc3f31c1b2ec774e66fc698e9",
+        "Created": "2020-03-26T06:16:02.354694095-04:00",
+        "Scope": "local",
+        "Driver": "bridge",
+        "EnableIPv6": false,
+        "IPAM": {
+            "Driver": "default",
+            "Options": null,
+            "Config": [
+                {
+                    "Subnet": "172.17.0.0/16"
+                }
+            ]
+        },
+        "Internal": false,
+        "Attachable": false,
+        "Containers": {},
+        "Options": {
+            "com.docker.network.bridge.default_bridge": "true",
+            "com.docker.network.bridge.enable_icc": "true",
+            "com.docker.network.bridge.enable_ip_masquerade": "true",
+            "com.docker.network.bridge.host_binding_ipv4": "0.0.0.0",
+            "com.docker.network.bridge.name": "docker0",
+            "com.docker.network.driver.mtu": "1500"
+        },
+        "Labels": {}
+    }
+]
+
+## Create the network ##
+
+[cloud_user@ip-10-0-1-23 ~]$ docker network create --driver=bridge --subnet=192.168.10.0/24 --gateway=192.168.10.250 borkspace
+27a32f3f95c7399645f6ef07e6fca9c6b0c9f73963057bb9fa21381a40f6ec65
+
+## Verify that network is created ##
+
+[cloud_user@ip-10-0-1-23 ~]$ docker network ls
+NETWORK ID          NAME                DRIVER              SCOPE
+27a32f3f95c7        borkspace           bridge              local
+3f2660dc2ad3        bridge              bridge              local
+640e8e8560d9        host                host                local
+1cf7547ab8e0        none                null                local
+[cloud_user@ip-10-0-1-23 ~]$ docker inspect borkspace
+[
+    {
+        "Name": "borkspace",
+        "Id": "27a32f3f95c7399645f6ef07e6fca9c6b0c9f73963057bb9fa21381a40f6ec65",
+        "Created": "2020-03-26T06:25:03.180095719-04:00",
+        "Scope": "local",
+        "Driver": "bridge",
+        "EnableIPv6": false,
+        "IPAM": {
+            "Driver": "default",
+            "Options": {},
+            "Config": [
+                {
+                    "Subnet": "192.168.10.0/24",
+                    "Gateway": "192.168.10.250"
+                }
+            ]
+        },
+        "Internal": false,
+        "Attachable": false,
+        "Containers": {},
+        "Options": {},
+        "Labels": {}
+    }
+]
+
+## Launch treattransfer container using the borkspace network ##
+
+[cloud_user@ip-10-0-1-23 ~]$ docker run -it --name treattransfer --network=borkspace spacebones/nyancat
+Unable to find image 'spacebones/nyancat:latest' locally
+Trying to pull repository docker.io/spacebones/nyancat ...
+latest: Pulling from docker.io/spacebones/nyancat
+88cca543c5b3: Pull complete
+Digest: sha256:37c908284b99d77fcd75a066e6941d9e5559f1666d398834ca6f1f564f6b8d1d
+Status: Downloaded newer image for docker.io/spacebones/nyancat:latest
+Nyanyanyanyanyanyanya...
+
+########################
+Persistent Data Volumes
+########################
+In this hands-on lab, we want to view a special message that was created for us! To view it, we must create a Docker volume containing the contents of /content-dockerquest-spacebones/volumes/ named missionstatus, then mount the volume on a new httpd container named fishin-mission running on port :80 to view it!
+
+ssh cloud_user@75.101.245.228
+The authenticity of host '75.101.245.228 (75.101.245.228)' can't be established.
+ECDSA key fingerprint is SHA256:x80glcM2IdWJ7bVPggFMNYPp1KGNHf1MbT4AvU/qHhE.
+Are you sure you want to continue connecting (yes/no)? yes
+Warning: Permanently added '75.101.245.228' (ECDSA) to the list of known hosts.
+Password:
+
+## Checks ##
+
+[cloud_user@ip-10-0-1-250 ~]$ docker ps
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS              PORTS               NAMES
+[cloud_user@ip-10-0-1-250 ~]$ ls
+content-dockerquest-spacebones
+
+## create a new volume, missionstatus ##
+
+[cloud_user@ip-10-0-1-250 ~]$ docker volume create missionstatus
+missionstatus
+
+## review the information ##
+
+[cloud_user@ip-10-0-1-250 ~]$ docker volume ls
+DRIVER              VOLUME NAME
+local               missionstatus
+[cloud_user@ip-10-0-1-250 ~]$ docker volume inspect missionstatus
+[
+    {
+        "CreatedAt": "2020-03-26T06:46:58-04:00",
+        "Driver": "local",
+        "Labels": {},
+        "Mountpoint": "/var/lib/docker/volumes/missionstatus/_data",
+        "Name": "missionstatus",
+        "Options": {},
+        "Scope": "local"
+    }
+]
+
+## create website data to the volume - root needed ##
+
+[cloud_user@ip-10-0-1-250 ~]$ sudo -i
+[sudo] password for cloud_user:
+[root@ip-10-0-1-250 ~]# cp -r /home/cloud_user/content-dockerquest-spacebones/volumes/* /var/lib/docker/volumes/missionstatus/_data/
+
+## double check ##
+
+[root@ip-10-0-1-250 ~]# ls /var/lib/docker/volumes/missionstatus/_data
+images  index.html  sitecode.md
+[root@ip-10-0-1-250 ~]# exit
+
+## new container named fishin-mission, using the httpd base image available on DockerHub. We'll want it running on port 80: ##
+
+[cloud_user@ip-10-0-1-250 ~]$ docker run -d -p 80:80 --name finish-mission \
+> --mount source=missionstatus,target=/usr/local/apache2/htdocs httpd
+Unable to find image 'httpd:latest' locally
+latest: Pulling from library/httpd
+68ced04f60ab: Pull complete
+35d35f1e0dc9: Pull complete
+8a918bf0ae55: Pull complete
+d7b9f2dbc195: Pull complete
+d56c468bde81: Pull complete
+Digest: sha256:946c54069130dbf136903fe658fe7d113bd8db8004de31282e20b262a3e106fb
+Status: Downloaded newer image for httpd:latest
+a44cdf4a8171d391fc3378ecb84fc2d7e38d44680a04e2ddd664ba7be5fa9dab
+[cloud_user@ip-10-0-1-250 ~]$ docker ps
+CONTAINER ID        IMAGE               COMMAND              CREATED             STATUS              PORTS                NAMES
+a44cdf4a8171        httpd               "httpd-foreground"   14 seconds ago      Up 13 seconds       0.0.0.0:80->80/tcp   finish-mission
+
+we can visit the server IP in a browser
