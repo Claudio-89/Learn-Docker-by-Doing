@@ -1,0 +1,1190 @@
+##################
+Container Logging
+##################
+In this lab, we are going to configure syslog on a Docker instance, configure Docker to use syslog instead of the JSON logging driver, and spin up two containers to test our configuration.
+
+ssh cloud_user@107.21.165.249
+The authenticity of host '107.21.165.249 (107.21.165.249)' can't be established.
+ECDSA key fingerprint is SHA256:ZguLv2s16OhHdCdu8BJeuMG5EnuYm/N2cje3paAAA+8.
+Are you sure you want to continue connecting (yes/no)? yes
+Warning: Permanently added '107.21.165.249' (ECDSA) to the list of known hosts.
+Password:
+[cloud_user@ip-10-0-1-47 ~]$ sudo -i
+[sudo] password for cloud_user:
+
+## Open the rsyslog.conf file ##
+
+[root@ip-10-0-1-47 ~]# vim /etc/rsyslog.conf # In the file editor, uncomment the two lines under "Provides UDP syslog reception"
+$ModLoad imudp
+$UDPServerRun 514
+
+## start the syslog service ##
+
+[root@ip-10-0-1-47 ~]# systemctl start rsyslog
+
+## configure Docker to use syslog as the default logging driver by creating a file called daemon.json ##
+
+[root@ip-10-0-1-47 ~]# sudo mkdir /etc/docker
+[root@ip-10-0-1-47 ~]# vim /etc/docker/daemon.json
+[root@ip-10-0-1-47 ~]# cat /etc/docker/daemon.json
+{
+  "log-driver": "syslog",
+  "log-opts": {
+    "syslog-address": "udp://10.0.1.47:514"
+  }
+}
+
+##  start the Docker service ##
+
+[root@ip-10-0-1-47 ~]# systemctl start docker
+
+## see if there are any logs coming in from Docker ##
+
+[root@ip-10-0-1-47 ~]# tail /var/log/messages
+Mar 26 08:05:04 ip-10-0-1-47 firewalld[5879]: WARNING: COMMAND_FAILED: '/usr/sbin/iptables -w10 -t filter -X DOCKER-ISOLATION' failed: iptables: No chain/target/match by that name.
+Mar 26 08:05:04 ip-10-0-1-47 kernel: ctnetlink v0.93: registering with nfnetlink.
+Mar 26 08:05:04 ip-10-0-1-47 dockerd: time="2020-03-26T08:05:04.608809901-04:00" level=info msg="Default bridge (docker0) is assigned with an IP address 172.17.0.0/16. Daemon option --bip can be used to set a preferred IP address"
+Mar 26 08:05:04 ip-10-0-1-47 firewalld[5879]: WARNING: COMMAND_FAILED: '/usr/sbin/iptables -w10 -D FORWARD -i docker0 -o docker0 -j DROP' failed: iptables: Bad rule (does a matching rule exist in that chain?).
+Mar 26 08:05:04 ip-10-0-1-47 kernel: IPv6: ADDRCONF(NETDEV_UP): docker0: link is not ready
+Mar 26 08:05:04 ip-10-0-1-47 dockerd: time="2020-03-26T08:05:04.785029713-04:00" level=info msg="Loading containers: done."
+Mar 26 08:05:04 ip-10-0-1-47 dockerd: time="2020-03-26T08:05:04.799770384-04:00" level=info msg="Docker daemon" commit=afacb8b graphdriver(s)=overlay2 version=19.03.8
+Mar 26 08:05:04 ip-10-0-1-47 dockerd: time="2020-03-26T08:05:04.800412180-04:00" level=info msg="Daemon has completed initialization"
+Mar 26 08:05:04 ip-10-0-1-47 systemd: Started Docker Application Container Engine.
+Mar 26 08:05:04 ip-10-0-1-47 dockerd: time="2020-03-26T08:05:04.825670244-04:00" level=info msg="API listen on /var/run/docker.sock"
+
+##  create two new containers using the httpd image. The first one will be called syslog-logging and will use syslog for the log driver. The second will be called json-logging and will use the JSON file for the log driver ##
+
+[root@ip-10-0-1-47 ~]# docker container run -d --name syslog-logging httpd
+Unable to find image 'httpd:latest' locally
+latest: Pulling from library/httpd
+68ced04f60ab: Pull complete
+35d35f1e0dc9: Pull complete
+8a918bf0ae55: Pull complete
+d7b9f2dbc195: Pull complete
+d56c468bde81: Pull complete
+Digest: sha256:946c54069130dbf136903fe658fe7d113bd8db8004de31282e20b262a3e106fb
+Status: Downloaded newer image for httpd:latest
+6925ffb408fd11e36a8d7174581a593a403c0bedb319132b02490f316907a965
+[root@ip-10-0-1-47 ~]# docker ps
+CONTAINER ID        IMAGE               COMMAND              CREATED             STATUS              PORTS               NAMES
+6925ffb408fd        httpd               "httpd-foreground"   8 seconds ago       Up 8 seconds        80/tcp              syslog-logging
+
+## when we run the following command, we receive that error because we're using syslog instead of JSON for logging ##
+
+[root@ip-10-0-1-47 ~]# docker logs syslog-logging
+Error response from daemon: configured logging driver does not support reading
+
+## To confirm this, we can check the content of /var/log/messages. Verify that the syslog-logging container is sending its logs to syslog by running tail on the message log file. ##
+
+[root@ip-10-0-1-47 ~]# tail /var/log/messages
+Mar 26 08:06:47 ip-10-0-1-47 kernel: docker0: port 1(veth141a440) entered forwarding state
+Mar 26 08:06:47 ip-10-0-1-47 kernel: docker0: port 1(veth141a440) entered disabled state
+Mar 26 08:06:47 ip-10-0-1-47 containerd: time="2020-03-26T08:06:47.245282568-04:00" level=info msg="shim containerd-shim started" address="/containerd-shim/moby/6925ffb408fd11e36a8d7174581a593a403c0bedb319132b02490f316907a965/shim.sock" debug=false pid=22119
+Mar 26 08:06:47 ip-10-0-1-47 kernel: IPv6: ADDRCONF(NETDEV_UP): eth0: link is not ready
+Mar 26 08:06:47 ip-10-0-1-47 kernel: IPv6: ADDRCONF(NETDEV_CHANGE): eth0: link becomes ready
+Mar 26 08:06:47 ip-10-0-1-47 kernel: IPv6: ADDRCONF(NETDEV_CHANGE): veth141a440: link becomes ready
+Mar 26 08:06:47 ip-10-0-1-47 kernel: docker0: port 1(veth141a440) entered blocking state
+Mar 26 08:06:47 ip-10-0-1-47 kernel: docker0: port 1(veth141a440) entered forwarding state
+Mar 26 08:06:47 ip-10-0-1-47 kernel: IPv6: ADDRCONF(NETDEV_CHANGE): docker0: link becomes ready
+Mar 26 08:07:32 ip-10-0-1-47 dockerd: time="2020-03-26T08:07:32.786101195-04:00" level=error msg="Handler for GET /v1.40/containers/6925ffb408fd11e36a8d7174581a593a403c0bedb319132b02490f316907a965/logs returned error: configured logging driver does not support reading"
+
+##  let's create our second test container. This time specifying the log driver as the JSON file. ##
+
+[root@ip-10-0-1-47 ~]# docker container run -d --name json-logging --log-driver json-file httpd
+b982621cedb852eb9c05b1071bd3aabadd9ad18300bd1e44878ba561278cc2c6
+[root@ip-10-0-1-47 ~]# docker ps
+CONTAINER ID        IMAGE               COMMAND              CREATED             STATUS              PORTS               NAMES
+b982621cedb8        httpd               "httpd-foreground"   11 seconds ago      Up 11 seconds       80/tcp              json-logging
+6925ffb408fd        httpd               "httpd-foreground"   2 minutes ago       Up 2 minutes        80/tcp              syslog-logging
+
+## verify that the json-logging container is sending its logs to the JSON file ##
+
+[root@ip-10-0-1-47 ~]# docker logs json-logging
+AH00558: httpd: Could not reliably determine the server's fully qualified domain name, using 172.17.0.3. Set the 'ServerName' directive globally to suppress this message
+AH00558: httpd: Could not reliably determine the server's fully qualified domain name, using 172.17.0.3. Set the 'ServerName' directive globally to suppress this message
+[Thu Mar 26 12:09:15.702204 2020] [mpm_event:notice] [pid 1:tid 140443114153088] AH00489: Apache/2.4.41 (Unix) configured -- resuming normal operations
+[Thu Mar 26 12:09:15.702384 2020] [core:notice] [pid 1:tid 140443114153088] AH00094: Command line: 'httpd -D FOREGROUND'
+
+## This time, the logs do not appear in /var/log/messages because they are being sent to a JSON file instead ##
+
+####################################
+Updating Containers with Watchtower
+####################################
+You will be using Watchtower to monitor containers for updates. In order to complete this learning activity, you will need a Docker Hub account
+
+Create the Dockerfile
+	The base image should be node.
+	Using the RUN instruction, make a directory called /var/node.
+	Use the ADD instruction to add the contents of the code directory into /var/node.
+	Make /var/node the working directory.
+	Execute an npm install.
+	Set ./bin/www as the command.
+	From the command line, log in to Docker Hub.
+	Build your image using <USERNAME>/express.
+	Push the image to Docker Hub.
+
+Create the demo app
+	Create a Docker container called demo-app.
+	The port mapping should be port 80 on the host, mapping to 3000 on the container.
+	The restart policy should be set to always.
+	Use the image that you created, <USERNAME>/express.
+
+Create the Watchtower container
+	Create a Docker container called watchtower.
+	The restart policy should be set to always.
+	Use the -v flag to set /var/run/docker.sock:/var/run/docker.sock.
+	Use the v2tec/watchtower followed by the -i flag to set the iteration to 30 seconds.
+
+Update the Docker image
+	Add an instruction to create /var/test. This should be done after creating /var/node.
+	Rebuild your image.
+	Push the image to Docker Hub.
+
+Watchtower will update demo-app
+	The Watchtower interval is set to 30 seconds.
+	After about 30 seconds, check to see if the container has been updated by executing docker ps.
+
+
+[cloud_user@ip-10-0-1-151 ~]$ sudo -i
+[sudo] password for cloud_user:
+[root@ip-10-0-1-151 ~]# ls
+anaconda-ks.cfg  content-express-demo-app
+
+## Create the Dockerfile ##
+
+[root@ip-10-0-1-151 ~]# vim Dockerfile
+[root@ip-10-0-1-151 ~]# cat Dockerfile
+FROM node
+
+RUN mkdir -p /var/node
+ADD content-express-demo-app/ /var/node
+WORKDIR /var/node
+RUN npm install
+CMD ./bin/www
+
+## DockerH Hub Login and Build the Docker Image ##
+
+[root@ip-10-0-1-151 ~]# docker login
+Login with your Docker ID to push and pull images from Docker Hub. If you don't have a Docker ID, head over to https://hub.docker.com to create one.
+Username: claudio89gr
+Password:
+WARNING! Your password will be stored unencrypted in /root/.docker/config.json.
+Configure a credential helper to remove this warning. See
+https://docs.docker.com/engine/reference/commandline/login/#credentials-store
+
+Login Succeeded
+[root@ip-10-0-1-151 ~]# docker build -t claudio89gr/express -f Dockerfile .
+Sending build context to Docker daemon  115.2kB
+Step 1/6 : FROM node
+latest: Pulling from library/node
+c0c53f743a40: Pull complete
+66997431d390: Pull complete
+0ea865e2909f: Pull complete
+584bf23912b7: Pull complete
+3c4c73959f29: Pull complete
+63e05266fc4b: Pull complete
+4d214fbc04d5: Pull complete
+fdea17640a8b: Pull complete
+fc3f35547985: Pull complete
+Digest: sha256:ad341aff5db73b2c13b55b83fbf7e2aa5164b90c365dfdd7d6e33cd1aa74a108
+Status: Downloaded newer image for node:latest
+ ---> 3ada5fbfe5a5
+Step 2/6 : RUN mkdir -p /var/node
+ ---> Running in 0af5cf07abbc
+Removing intermediate container 0af5cf07abbc
+ ---> a7c6be9849e9
+Step 3/6 : ADD content-express-demo-app/ /var/node
+ ---> a575c4118c59
+Step 4/6 : WORKDIR /var/node
+ ---> Running in a9e3a94fb162
+Removing intermediate container a9e3a94fb162
+ ---> f2bd77fc91aa
+Step 5/6 : RUN npm install
+ ---> Running in 208c3b7ded42
+added 107 packages from 139 contributors and audited 194 packages in 4.052s
+found 6 vulnerabilities (3 low, 2 moderate, 1 critical)
+  run `npm audit fix` to fix them, or `npm audit` for details
+Removing intermediate container 208c3b7ded42
+ ---> ff7d84d426fb
+Step 6/6 : CMD ./bin/www
+ ---> Running in bbd4e5100dc4
+Removing intermediate container bbd4e5100dc4
+ ---> abce9abe3f50
+Successfully built abce9abe3f50
+Successfully tagged claudio89gr/express:latest
+
+## Push the Image to Docker Hub ##
+
+[root@ip-10-0-1-151 ~]# docker push claudio89gr/express
+The push refers to repository [docker.io/claudio89gr/express]
+1ffe18bf37b7: Pushed
+dd3a357b23c4: Pushed
+ca4794427938: Pushed
+ce072d9d5066: Mounted from library/node
+c3d2f693437b: Mounted from library/node
+c1cd48a5fdc7: Mounted from library/node
+236d3097407d: Mounted from library/node
+91daf9fc6311: Mounted from library/node
+162804eaaa1e: Mounted from library/node
+d040e6423b7a: Mounted from library/node
+00adafc8e77b: Mounted from library/node
+2c995a2087c1: Mounted from library/node
+latest: digest: sha256:c42d8a7dc4a7c302d5d7b81fd55548362c40b744d302cea8b54bea19e38ae189 size: 2842
+
+## Create a Demo Container ##
+
+[root@ip-10-0-1-151 ~]# docker run -d --name demo-app -p 80:3000 --restart always claudio89gr/express
+a8580eaa22eb08d8d963affea400dc2e20fb5e67d6660df7ba4eb4b033ffb60c
+[root@ip-10-0-1-151 ~]# docker ps
+CONTAINER ID        IMAGE                 COMMAND                  CREATED             STATUS              PORTS                  NAMES
+a8580eaa22eb        claudio89gr/express   "docker-entrypoint.s…"   10 seconds ago      Up 8 seconds        0.0.0.0:80->3000/tcp   demo-app
+
+## Create the Watchtower Container ##
+
+[root@ip-10-0-1-151 ~]# docker run -d --name watchtower --restart always -v /var/run/docker.sock:/var/run/docker.sock v2tec/watchtower -i 30
+Unable to find image 'v2tec/watchtower:latest' locally
+latest: Pulling from v2tec/watchtower
+a5415f98d52c: Pull complete
+c3f7208ad77c: Pull complete
+169c1e589d74: Pull complete
+Digest: sha256:4cb6299fe87dcbfe0f13dcc5a11bf44bd9628a4dae0035fecb8cc2b88ff0fc79
+Status: Downloaded newer image for v2tec/watchtower:latest
+dc3b38eb350d19e03e3a4a20b599a627e73831b373795e82a3ab607318a1302a
+
+## Update the Docker Image ##
+
+[root@ip-10-0-1-151 ~]# vim Dockerfile
+[root@ip-10-0-1-151 ~]# cat Dockerfile
+FROM node
+
+RUN mkdir -p /var/node
+RUN mkdir -p /var/test
+ADD content-express-demo-app/ /var/node
+WORKDIR /var/node
+RUN npm install
+CMD ./bin/www
+[root@ip-10-0-1-151 ~]# docker build -t claudio89gr/express -f Dockerfile .
+Sending build context to Docker daemon  114.7kB
+Step 1/7 : FROM node
+ ---> 3ada5fbfe5a5
+Step 2/7 : RUN mkdir -p /var/node
+ ---> Using cache
+ ---> a7c6be9849e9
+Step 3/7 : RUN mkdir -p /var/test
+ ---> Running in 3b214acf79ce
+Removing intermediate container 3b214acf79ce
+ ---> 1ffe74806891
+Step 4/7 : ADD content-express-demo-app/ /var/node
+ ---> 652bee621766
+Step 5/7 : WORKDIR /var/node
+ ---> Running in 17685bbb4e6a
+Removing intermediate container 17685bbb4e6a
+ ---> 17e84553419b
+Step 6/7 : RUN npm install
+ ---> Running in c9b0b30b7dec
+added 107 packages from 139 contributors and audited 194 packages in 4.122s
+Removing intermediate container c9b0b30b7dec
+ ---> 5f4ce95e78a6
+Step 7/7 : CMD ./bin/www
+ ---> Running in 54308c34615c
+Removing intermediate container 54308c34615c
+ ---> 5591ebbc7f12
+Successfully built 5591ebbc7f12
+Successfully tagged claudio89gr/express:latest
+
+## Repush the image to Docker Hub ##
+
+[root@ip-10-0-1-151 ~]# docker push claudio89gr/express
+The push refers to repository [docker.io/claudio89gr/express]
+1ffe18bf37b7: Layer already exists
+dd3a357b23c4: Layer already exists
+ca4794427938: Layer already exists
+ce072d9d5066: Layer already exists
+c3d2f693437b: Layer already exists
+c1cd48a5fdc7: Layer already exists
+236d3097407d: Layer already exists
+91daf9fc6311: Layer already exists
+162804eaaa1e: Layer already exists
+d040e6423b7a: Layer already exists
+00adafc8e77b: Layer already exists
+2c995a2087c1: Layer already exists
+latest: digest: sha256:c42d8a7dc4a7c302d5d7b81fd55548362c40b744d302cea8b54bea19e38ae189 size: 2842
+
+###########################
+Adding Metadata and Labels
+###########################
+In this lab, you will deploy a container that uses labels. In order to complete this learning activity, you will need a Docker Hub account.
+
+Log in to your Docker workstation and Docker server, and sudo to root. You will create the Dockerfile and image on the Docker workstation. The weather-app container will be run on your Docker server.
+
+## ON THE DOCKER WORKSTATION ##
+
+## Create a Dockerfile ##
+
+[root@ip-10-0-1-231 ~]# vim Dockerfile
+[root@ip-10-0-1-231 ~]# cat Dockerfile
+FROM node
+
+LABEL maintainer="claudio@hotmail.it"
+
+ARG BUILD_VERSION
+ARG BUILD_DATE
+ARG APPLICATION_NAME
+
+LABEL org.label-schema.build-date=$BUILD_DATE
+LABEL org.label-schema.application=$APPLICATION_NAME
+LABEL org.label-schema.version=$BUILD_VERSION
+
+RUN mkdir -p /var/node
+ADD weather-app/ /var/node/
+WORKDIR /var/node
+RUN npm install
+EXPOSE 3000
+CMD ./bin/www
+
+## Build the Docker Image ##
+
+[root@ip-10-0-1-231 ~]# docker login
+Login with your Docker ID to push and pull images from Docker Hub. If you don't have a Docker ID, head over to https://hub.docker.com to create one.
+Username: claudio89gr
+Password:
+WARNING! Your password will be stored unencrypted in /root/.docker/config.json.
+Configure a credential helper to remove this warning. See
+https://docs.docker.com/engine/reference/commandline/login/#credentials-store
+
+Login Succeeded
+[root@ip-10-0-1-231 ~]# docker build -t claudio89gr/weather-app --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
+> --build-arg APPLICATION_NAME=weather-app --build-arg BUILD_VERSION=v1.0 -f Dockerfile .
+Sending build context to Docker daemon  225.8kB
+Step 1/14 : FROM node
+latest: Pulling from library/node
+c0c53f743a40: Pull complete
+66997431d390: Pull complete
+0ea865e2909f: Pull complete
+584bf23912b7: Pull complete
+3c4c73959f29: Pull complete
+63e05266fc4b: Pull complete
+02fbd16c4b5a: Pull complete
+efad3c420eff: Pull complete
+3bc52b6571e8: Pull complete
+Digest: sha256:16c9145b43383b6885a8f13eda52e0a4b06fb88f0e2668d165628bc6ac5b9656
+Status: Downloaded newer image for node:latest
+ ---> 4f998e26046b
+Step 2/14 : LABEL maintainer="claudio@hotmail.it"
+ ---> Running in f77c45d8179e
+Removing intermediate container f77c45d8179e
+ ---> 0fadd7d9a821
+Step 3/14 : ARG BUILD_VERSION
+ ---> Running in dec0c8f8a0bd
+Removing intermediate container dec0c8f8a0bd
+ ---> 79f892adc218
+Step 4/14 : ARG BUILD_DATE
+ ---> Running in 8354ca2666cd
+Removing intermediate container 8354ca2666cd
+ ---> 48d68974a1e8
+Step 5/14 : ARG APPLICATION_NAME
+ ---> Running in 003a53a0edb6
+Removing intermediate container 003a53a0edb6
+ ---> b877128662d5
+Step 6/14 : LABEL org.label-schema.build-date=$BUILD_DATE
+ ---> Running in 9229f5842fee
+Removing intermediate container 9229f5842fee
+ ---> 8f3b540fae3b
+Step 7/14 : LABEL org.label-schema.application=$APPLICATION_NAME
+ ---> Running in e947ba293bd5
+Removing intermediate container e947ba293bd5
+ ---> 884d64737902
+Step 8/14 : LABEL org.label-schema.version=$BUILD_VERSION
+ ---> Running in 4b2e88557ff0
+Removing intermediate container 4b2e88557ff0
+ ---> da4ec1e987b5
+Step 9/14 : RUN mkdir -p /var/node
+ ---> Running in 047c4efcff3f
+Removing intermediate container 047c4efcff3f
+ ---> 3f3594e814ea
+Step 10/14 : ADD weather-app/ /var/node/
+ ---> eae9647ce9a8
+Step 11/14 : WORKDIR /var/node
+ ---> Running in 2db18c35730d
+Removing intermediate container 2db18c35730d
+ ---> 051c107c9d5b
+Step 12/14 : RUN npm install
+ ---> Running in b8defa713a07
+added 169 packages from 223 contributors and audited 310 packages in 5.834s
+found 10 vulnerabilities (1 low, 3 moderate, 6 high)
+  run `npm audit fix` to fix them, or `npm audit` for details
+Removing intermediate container b8defa713a07
+ ---> 7a63cee82206
+Step 13/14 : EXPOSE 3000
+ ---> Running in 21bf6fb14d14
+Removing intermediate container 21bf6fb14d14
+ ---> 3195ef820bca
+Step 14/14 : CMD ./bin/www
+ ---> Running in 56e5f28d9038
+Removing intermediate container 56e5f28d9038
+ ---> dc9b2b12108e
+Successfully built dc9b2b12108e
+Successfully tagged claudio89gr/weather-app:latest
+[root@ip-10-0-1-231 ~]# docker images
+REPOSITORY                TAG                 IMAGE ID            CREATED             SIZE
+claudio89gr/weather-app   latest              dc9b2b12108e        24 seconds ago      964MB
+node                      latest              4f998e26046b        13 hours ago        943MB
+[root@ip-10-0-1-231 ~]# docker inspect dc9b2b12108e
+[
+    {
+        "Id": "sha256:dc9b2b12108ed3383317d966e89b7cd65fccf59148825050291a7ce0043b2109",
+        "RepoTags": [
+            "claudio89gr/weather-app:latest"
+        ],
+        "RepoDigests": [],
+        "Parent": "sha256:3195ef820bca52355c838534de3011b2acce10a6552153d6294c68c32ba35243",
+        "Comment": "",
+        "Created": "2020-03-28T13:10:13.031381889Z",
+        "Container": "56e5f28d90384398f03b2f6cc86f09d829b29016fb81ff6bb542a62e953a0114",
+        "ContainerConfig": {
+            "Hostname": "56e5f28d9038",
+            "Domainname": "",
+            "User": "",
+            "AttachStdin": false,
+            "AttachStdout": false,
+            "AttachStderr": false,
+            "ExposedPorts": {
+                "3000/tcp": {}
+            },
+            "Tty": false,
+            "OpenStdin": false,
+            "StdinOnce": false,
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "NODE_VERSION=13.12.0",
+                "YARN_VERSION=1.22.4"
+            ],
+            "Cmd": [
+                "/bin/sh",
+                "-c",
+                "#(nop) ",
+                "CMD [\"/bin/sh\" \"-c\" \"./bin/www\"]"
+            ],
+            "Image": "sha256:3195ef820bca52355c838534de3011b2acce10a6552153d6294c68c32ba35243",
+            "Volumes": null,
+            "WorkingDir": "/var/node",
+            "Entrypoint": [
+                "docker-entrypoint.sh"
+            ],
+            "OnBuild": null,
+            "Labels": {
+                "maintainer": "claudio@hotmail.it",
+                "org.label-schema.application": "weather-app",
+                "org.label-schema.build-date": "2020-03-28T13:09:22Z",
+                "org.label-schema.version": "v1.0"
+            }
+        },
+        "DockerVersion": "19.03.8",
+        "Author": "",
+        "Config": {
+            "Hostname": "",
+            "Domainname": "",
+            "User": "",
+            "AttachStdin": false,
+            "AttachStdout": false,
+            "AttachStderr": false,
+            "ExposedPorts": {
+                "3000/tcp": {}
+            },
+            "Tty": false,
+            "OpenStdin": false,
+            "StdinOnce": false,
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "NODE_VERSION=13.12.0",
+                "YARN_VERSION=1.22.4"
+            ],
+            "Cmd": [
+                "/bin/sh",
+                "-c",
+                "./bin/www"
+            ],
+            "Image": "sha256:3195ef820bca52355c838534de3011b2acce10a6552153d6294c68c32ba35243",
+            "Volumes": null,
+            "WorkingDir": "/var/node",
+            "Entrypoint": [
+                "docker-entrypoint.sh"
+            ],
+            "OnBuild": null,
+            "Labels": {
+                "maintainer": "claudio@hotmail.it",
+                "org.label-schema.application": "weather-app",
+                "org.label-schema.build-date": "2020-03-28T13:09:22Z",
+                "org.label-schema.version": "v1.0"
+            }
+        },
+        "Architecture": "amd64",
+        "Os": "linux",
+        "Size": 964125914,
+        "VirtualSize": 964125914,
+        "GraphDriver": {
+            "Data": {
+                "LowerDir": "/var/lib/docker/overlay2/3054aa907d1c78799ebd574c071b5f0798c46a77311bd9b51be43c604051a4fa/diff:/var/lib/docker/overlay2/1af7deba8e09828beca2470081b5a3d6ca9a8da027eb6906518ebca8bd9565ee/diff:/var/lib/docker/overlay2/32b9f1e808a1b16f0d6d858eb5f4cb937e466a76dbf053d1cf6618dc15e1d89f/diff:/var/lib/docker/overlay2/a8cd7c201d3533a605775f88e3cb899cc31a4622c6a77429645a9b8becee58dc/diff:/var/lib/docker/overlay2/c2b14e42fb03ecc54749a7c92a025476bafba02bf406c2d099599ce7af67c0da/diff:/var/lib/docker/overlay2/30f236abeff308e6112eb0598914b75ae434362ed527f54cc37819073c463b76/diff:/var/lib/docker/overlay2/caae1ca90f250e1fa8555cb8b3f83f5afa27b5f03c56d9d4a7e0fc723603b909/diff:/var/lib/docker/overlay2/50f90aeae52d51024bfcd8f910192f2afe860ce42c1e9c7b12bf51fc5e9fa7f4/diff:/var/lib/docker/overlay2/96c86d18426960157baffbe9b670c4aaa0605b43072411424cd7f6da081004a9/diff:/var/lib/docker/overlay2/c7fa9229aac638b6e9c0292597cbdd26f801353990c70c7e8aed3d9a4b7c1c29/diff:/var/lib/docker/overlay2/14c45421200a42a3e119733d3f689851b74e0e6caddc72df22f93589b843d03c/diff",
+                "MergedDir": "/var/lib/docker/overlay2/99450bf76ac3667fa31b3b153da28867f7606c2ff6d2cf706cc6f2cff74fa96c/merged",
+                "UpperDir": "/var/lib/docker/overlay2/99450bf76ac3667fa31b3b153da28867f7606c2ff6d2cf706cc6f2cff74fa96c/diff",
+                "WorkDir": "/var/lib/docker/overlay2/99450bf76ac3667fa31b3b153da28867f7606c2ff6d2cf706cc6f2cff74fa96c/work"
+            },
+            "Name": "overlay2"
+        },
+        "RootFS": {
+            "Type": "layers",
+            "Layers": [
+                "sha256:2c995a2087c1d96cf0dff249abef60efa99b33d4c27c373105168d11db8e930f",
+                "sha256:00adafc8e77bc2b01cb250c1194f4685bb756f75fe4ff14f59c2370a446aa9c1",
+                "sha256:d040e6423b7a52c3fcb9da1a39ac19545a133dff1f424d3ede97b15d89deb6de",
+                "sha256:162804eaaa1e00e48ea5dd488364441aab1926201b93c22dd1ad871589295951",
+                "sha256:91daf9fc631108afae7d5a95c89d2bf807159e6afcd72c6858b4609740f4faaf",
+                "sha256:236d3097407d6c0ead122dc0ea518a7720e1a16d0bbf546423a679d2a9488c6f",
+                "sha256:76addd7150f168720231672786ecf30f52185fa94a227cd21f94910641d27b4b",
+                "sha256:7320e5a04e26246ad831cf6e0b884ff213d1c10a5725e2bbefcec3ff194a447d",
+                "sha256:73007983f8c375aa0bbf84fb544d7d43b19b632006a38e597b05278c2e368147",
+                "sha256:5f9e02366f0b4860f16fe74326b2ed23078425746b440bf9679593c582c12faf",
+                "sha256:93cc008199c2d0b751c67188afff2085a327ce36fb14833b290a51a2b2ca172b",
+                "sha256:41ca39b76b12e08ff640a16f710964cd168383ce1622051bf4955c0b7464dabc"
+            ]
+        },
+        "Metadata": {
+            "LastTagTime": "2020-03-28T09:10:13.125979707-04:00"
+        }
+    }
+]
+
+## Push the image to Docker Hub ##
+
+[root@ip-10-0-1-231 ~]# docker push claudio89gr/weather-app
+The push refers to repository [docker.io/claudio89gr/weather-app]
+41ca39b76b12: Pushed
+93cc008199c2: Pushed
+5f9e02366f0b: Pushed
+73007983f8c3: Layer already exists
+7320e5a04e26: Layer already exists
+76addd7150f1: Layer already exists
+236d3097407d: Layer already exists
+91daf9fc6311: Layer already exists
+162804eaaa1e: Layer already exists
+d040e6423b7a: Layer already exists
+00adafc8e77b: Layer already exists
+2c995a2087c1: Layer already exists
+latest: digest: sha256:62a0d2156e3d725fcddc6e667f07d62e66d639b7b4316c4b719d3c58bc020f92 size: 2843
+
+## Check out version v1.1 of the weather app ##
+
+[root@ip-10-0-1-231 ~]# ls
+anaconda-ks.cfg  Dockerfile  weather-app
+[root@ip-10-0-1-231 ~]# cd weather-app/
+[root@ip-10-0-1-231 weather-app]# git checkout v1.1
+Branch v1.1 set up to track remote branch v1.1 from origin.
+Switched to a new branch 'v1.1'
+[root@ip-10-0-1-231 weather-app]# git branch
+  master
+* v1.1
+[root@ip-10-0-1-231 weather-app]# cd
+
+## Rebuild the weather-app image ##
+
+[root@ip-10-0-1-231 ~]# docker build -t claudio89gr/weather-app --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') --build-arg APPLICATION_NAME=weather-app --build-arg BUILD_VERSION=v1.1 -f Dockerfile .
+Sending build context to Docker daemon  226.3kB
+Step 1/14 : FROM node
+ ---> 4f998e26046b
+Step 2/14 : LABEL maintainer="claudio@hotmail.it"
+ ---> Using cache
+ ---> 0fadd7d9a821
+Step 3/14 : ARG BUILD_VERSION
+ ---> Using cache
+ ---> 79f892adc218
+Step 4/14 : ARG BUILD_DATE
+ ---> Using cache
+ ---> 48d68974a1e8
+Step 5/14 : ARG APPLICATION_NAME
+ ---> Using cache
+ ---> b877128662d5
+Step 6/14 : LABEL org.label-schema.build-date=$BUILD_DATE
+ ---> Running in 3e820217194c
+Removing intermediate container 3e820217194c
+ ---> 366d1f702cdd
+Step 7/14 : LABEL org.label-schema.application=$APPLICATION_NAME
+ ---> Running in 798d5a98e5e5
+Removing intermediate container 798d5a98e5e5
+ ---> 91d17d35dcf4
+Step 8/14 : LABEL org.label-schema.version=$BUILD_VERSION
+ ---> Running in 7ebc3be8ef1a
+Removing intermediate container 7ebc3be8ef1a
+ ---> dded3e2f8cdb
+Step 9/14 : RUN mkdir -p /var/node
+ ---> Running in dc972c2f6f4c
+Removing intermediate container dc972c2f6f4c
+ ---> 1cce4445138f
+Step 10/14 : ADD weather-app/ /var/node/
+ ---> 3d9aea6da72d
+Step 11/14 : WORKDIR /var/node
+ ---> Running in ae8db72465af
+Removing intermediate container ae8db72465af
+ ---> 036249c64a36
+Step 12/14 : RUN npm install
+ ---> Running in 88479a774c6a
+added 169 packages from 223 contributors and audited 310 packages in 6.131s
+found 10 vulnerabilities (1 low, 3 moderate, 6 high)
+  run `npm audit fix` to fix them, or `npm audit` for details
+Removing intermediate container 88479a774c6a
+ ---> 8b3d98013c6a
+Step 13/14 : EXPOSE 3000
+ ---> Running in 1f347a541344
+Removing intermediate container 1f347a541344
+ ---> 7731ce2c92ac
+Step 14/14 : CMD ./bin/www
+ ---> Running in a9704b2a40d2
+Removing intermediate container a9704b2a40d2
+ ---> 0f5ad9eddaf6
+Successfully built 0f5ad9eddaf6
+Successfully tagged claudio89gr/weather-app:latest
+[root@ip-10-0-1-231 ~]# docker ps
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS              PORTS               NAMES
+[root@ip-10-0-1-231 ~]# docker images
+REPOSITORY                TAG                 IMAGE ID            CREATED             SIZE
+claudio89gr/weather-app   latest              0f5ad9eddaf6        32 seconds ago      964MB
+claudio89gr/weather-app   <none>              dc9b2b12108e        8 minutes ago       964MB
+node                      latest              4f998e26046b        13 hours ago        943MB
+[root@ip-10-0-1-231 ~]# docker inspect 0f5ad9eddaf6
+[
+    {
+        "Id": "sha256:0f5ad9eddaf60dfc0bb419ddc1153c3113385cae2942a3ad6c46edfce682e327",
+        "RepoTags": [
+            "claudio89gr/weather-app:latest"
+        ],
+        "RepoDigests": [],
+        "Parent": "sha256:7731ce2c92ac314563437743447fdbe2f36916fb6d7a0370a7bee51aa633aa8a",
+        "Comment": "",
+        "Created": "2020-03-28T13:18:11.275207521Z",
+        "Container": "a9704b2a40d29f3b231e140e51417b298f4ec06496e9d6bd3bd44ad5a6938a13",
+        "ContainerConfig": {
+            "Hostname": "a9704b2a40d2",
+            "Domainname": "",
+            "User": "",
+            "AttachStdin": false,
+            "AttachStdout": false,
+            "AttachStderr": false,
+            "ExposedPorts": {
+                "3000/tcp": {}
+            },
+            "Tty": false,
+            "OpenStdin": false,
+            "StdinOnce": false,
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "NODE_VERSION=13.12.0",
+                "YARN_VERSION=1.22.4"
+            ],
+            "Cmd": [
+                "/bin/sh",
+                "-c",
+                "#(nop) ",
+                "CMD [\"/bin/sh\" \"-c\" \"./bin/www\"]"
+            ],
+            "Image": "sha256:7731ce2c92ac314563437743447fdbe2f36916fb6d7a0370a7bee51aa633aa8a",
+            "Volumes": null,
+            "WorkingDir": "/var/node",
+            "Entrypoint": [
+                "docker-entrypoint.sh"
+            ],
+            "OnBuild": null,
+            "Labels": {
+                "maintainer": "claudio@hotmail.it",
+                "org.label-schema.application": "weather-app",
+                "org.label-schema.build-date": "2020-03-28T13:17:59Z",
+                "org.label-schema.version": "v1.1"
+            }
+        },
+        "DockerVersion": "19.03.8",
+        "Author": "",
+        "Config": {
+            "Hostname": "",
+            "Domainname": "",
+            "User": "",
+            "AttachStdin": false,
+            "AttachStdout": false,
+            "AttachStderr": false,
+            "ExposedPorts": {
+                "3000/tcp": {}
+            },
+            "Tty": false,
+            "OpenStdin": false,
+            "StdinOnce": false,
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "NODE_VERSION=13.12.0",
+                "YARN_VERSION=1.22.4"
+            ],
+            "Cmd": [
+                "/bin/sh",
+                "-c",
+                "./bin/www"
+            ],
+            "Image": "sha256:7731ce2c92ac314563437743447fdbe2f36916fb6d7a0370a7bee51aa633aa8a",
+            "Volumes": null,
+            "WorkingDir": "/var/node",
+            "Entrypoint": [
+                "docker-entrypoint.sh"
+            ],
+            "OnBuild": null,
+            "Labels": {
+                "maintainer": "claudio@hotmail.it",
+                "org.label-schema.application": "weather-app",
+                "org.label-schema.build-date": "2020-03-28T13:17:59Z",
+                "org.label-schema.version": "v1.1"
+            }
+        },
+        "Architecture": "amd64",
+        "Os": "linux",
+        "Size": 964126991,
+        "VirtualSize": 964126991,
+        "GraphDriver": {
+            "Data": {
+                "LowerDir": "/var/lib/docker/overlay2/76f1e454585fc69e4fa9a458d90853a21c0c38a855ce2a1e412d95d72f43a052/diff:/var/lib/docker/overlay2/c296b3d92ee35047f17fa22d0da07d22e9b039ed57b86e48c7eb94403398ed59/diff:/var/lib/docker/overlay2/32b9f1e808a1b16f0d6d858eb5f4cb937e466a76dbf053d1cf6618dc15e1d89f/diff:/var/lib/docker/overlay2/a8cd7c201d3533a605775f88e3cb899cc31a4622c6a77429645a9b8becee58dc/diff:/var/lib/docker/overlay2/c2b14e42fb03ecc54749a7c92a025476bafba02bf406c2d099599ce7af67c0da/diff:/var/lib/docker/overlay2/30f236abeff308e6112eb0598914b75ae434362ed527f54cc37819073c463b76/diff:/var/lib/docker/overlay2/caae1ca90f250e1fa8555cb8b3f83f5afa27b5f03c56d9d4a7e0fc723603b909/diff:/var/lib/docker/overlay2/50f90aeae52d51024bfcd8f910192f2afe860ce42c1e9c7b12bf51fc5e9fa7f4/diff:/var/lib/docker/overlay2/96c86d18426960157baffbe9b670c4aaa0605b43072411424cd7f6da081004a9/diff:/var/lib/docker/overlay2/c7fa9229aac638b6e9c0292597cbdd26f801353990c70c7e8aed3d9a4b7c1c29/diff:/var/lib/docker/overlay2/14c45421200a42a3e119733d3f689851b74e0e6caddc72df22f93589b843d03c/diff",
+                "MergedDir": "/var/lib/docker/overlay2/91334d89c49672fb5bf107f87ffe457df0bfc7c4702e50a9a8507e95a5cef5c7/merged",
+                "UpperDir": "/var/lib/docker/overlay2/91334d89c49672fb5bf107f87ffe457df0bfc7c4702e50a9a8507e95a5cef5c7/diff",
+                "WorkDir": "/var/lib/docker/overlay2/91334d89c49672fb5bf107f87ffe457df0bfc7c4702e50a9a8507e95a5cef5c7/work"
+            },
+            "Name": "overlay2"
+        },
+        "RootFS": {
+            "Type": "layers",
+            "Layers": [
+                "sha256:2c995a2087c1d96cf0dff249abef60efa99b33d4c27c373105168d11db8e930f",
+                "sha256:00adafc8e77bc2b01cb250c1194f4685bb756f75fe4ff14f59c2370a446aa9c1",
+                "sha256:d040e6423b7a52c3fcb9da1a39ac19545a133dff1f424d3ede97b15d89deb6de",
+                "sha256:162804eaaa1e00e48ea5dd488364441aab1926201b93c22dd1ad871589295951",
+                "sha256:91daf9fc631108afae7d5a95c89d2bf807159e6afcd72c6858b4609740f4faaf",
+                "sha256:236d3097407d6c0ead122dc0ea518a7720e1a16d0bbf546423a679d2a9488c6f",
+                "sha256:76addd7150f168720231672786ecf30f52185fa94a227cd21f94910641d27b4b",
+                "sha256:7320e5a04e26246ad831cf6e0b884ff213d1c10a5725e2bbefcec3ff194a447d",
+                "sha256:73007983f8c375aa0bbf84fb544d7d43b19b632006a38e597b05278c2e368147",
+                "sha256:25e1074171a893bc8ff98647540abea967bd487304390da7eb06f721be9a3199",
+                "sha256:c5337fe86e981230bbc4ea6d03767f3fd1ea63670141a8fda8afc421299b2c90",
+                "sha256:f460e26eca92594a6c558a0d146022946b7723f1a28c936fd3c4e278dee51d06"
+            ]
+        },
+        "Metadata": {
+            "LastTagTime": "2020-03-28T09:18:11.307115738-04:00"
+        }
+    }
+]
+[root@ip-10-0-1-231 ~]# docker images
+REPOSITORY                TAG                 IMAGE ID            CREATED              SIZE
+claudio89gr/weather-app   latest              0f5ad9eddaf6        About a minute ago   964MB
+claudio89gr/weather-app   <none>              dc9b2b12108e        9 minutes ago        964MB
+node                      latest              4f998e26046b        13 hours ago         943MB
+[root@ip-10-0-1-231 ~]# docker push claudio89gr/weather-app
+The push refers to repository [docker.io/claudio89gr/weather-app]
+f460e26eca92: Pushed
+c5337fe86e98: Pushed
+25e1074171a8: Pushed
+73007983f8c3: Layer already exists
+7320e5a04e26: Layer already exists
+76addd7150f1: Layer already exists
+236d3097407d: Layer already exists
+91daf9fc6311: Layer already exists
+162804eaaa1e: Layer already exists
+d040e6423b7a: Layer already exists
+00adafc8e77b: Layer already exists
+2c995a2087c1: Layer already exists
+latest: digest: sha256:2159799c1b21e769b34bcb59700f993af06971bad88278aff3eba09c5a7c822b size: 2843
+
+
+## ON THE DOCKER SERVER ##
+
+## Create the weather-app container ##
+
+[root@ip-10-0-1-187 ~]# docker run -d --name weather-app -p 80:3000 --restart always claudio89gr/weather-app
+Unable to find image 'claudio89gr/weather-app:latest' locally
+latest: Pulling from claudio89gr/weather-app
+c0c53f743a40: Pull complete
+66997431d390: Pull complete
+0ea865e2909f: Pull complete
+584bf23912b7: Pull complete
+3c4c73959f29: Pull complete
+63e05266fc4b: Pull complete
+02fbd16c4b5a: Pull complete
+efad3c420eff: Pull complete
+3bc52b6571e8: Pull complete
+bf02c4681a6b: Pull complete
+1e7531d3457e: Pull complete
+af7f0f2b6371: Pull complete
+Digest: sha256:62a0d2156e3d725fcddc6e667f07d62e66d639b7b4316c4b719d3c58bc020f92
+Status: Downloaded newer image for claudio89gr/weather-app:latest
+b5b2c490a9db1a1ad6e9c3ef60f7b6ae4dbdeaadeaeae4dc4f9102383ef97ea6
+
+##########################
+Load Balancing Containers
+##########################
+Your manager has tasked you with creating two proofs of concept. For the first proof of concept, you are to use Docker Compose to create an Nginx load balancer and three instances using your weather-app image. Nginx will use port 80 and send traffic to port 3000 on the weather-app containers. For the second proof of concept, you are to create a Docker Swarm service called nginx-app that has two replicas using the Nginx image. The service should be published to port 8080 on the host and target port 80 on the containers.
+
+
+## Create a Docker Compose file ##
+ 
+[root@ip-10-0-1-205 ~]# ls
+anaconda-ks.cfg  lb-challenge  swarm-token.txt
+[root@ip-10-0-1-205 ~]# cd lb-challenge/
+[root@ip-10-0-1-205 lb-challenge]# ls
+load-balancer  weather-app
+[root@ip-10-0-1-205 lb-challenge]# vim docker-compose.yml
+[root@ip-10-0-1-205 lb-challenge]# cat docker-compose.yml
+version: '3.2'
+services:
+        weather-app1:
+         build: ./weather-app
+         tty: true
+         networks:
+         - frontend
+        weather-app2:
+         build: ./weather-app
+         tty: true
+         networks:
+         - frontend
+        weather-app3:
+         build: ./weather-app
+         tty: true
+         networks:
+         - frontend
+        loadbalancer:
+         build: ./load-balancer
+         tty: true
+         ports:
+         - 80:80
+        networks:
+         - frontend
+
+networks:
+ frontend:
+
+## Update nginx.conf ##
+
+[root@ip-10-0-1-205 lb-challenge]# cd load-balancer/
+[root@ip-10-0-1-205 load-balancer]# ls
+Dockerfile  nginx.conf
+[root@ip-10-0-1-205 load-balancer]# vim nginx.conf
+[root@ip-10-0-1-205 load-balancer]# cat nginx.conf
+events { worker_connections 1024; }
+
+http {
+ upstream localhost {
+        server weather-app1:3000;
+        server weather-app2:3000;
+        server weather-app3:3000;
+}
+ server {
+        listen 80;
+        server_name localhost;
+        location / {
+         proxy_pass http://localhost;
+         proxy_set_header Host $host;
+    }
+  }
+}
+[root@ip-10-0-1-205 load-balancer]# cd ..
+
+## Execute docker-compose up ##
+
+[root@ip-10-0-1-205 lb-challenge]# docker-compose up --build -d
+WARNING: The Docker Engine you're using is running in swarm mode.
+
+Compose does not use swarm mode to deploy services to multiple nodes in a swarm. All containers will be scheduled on the current node.
+
+To deploy your application across the swarm, use `docker stack deploy`.
+
+Creating network "lb-challenge_frontend" with the default driver
+Building weather-app1
+Step 1/10 : FROM node
+latest: Pulling from library/node
+c0c53f743a40: Pull complete
+66997431d390: Pull complete
+0ea865e2909f: Pull complete
+584bf23912b7: Pull complete
+3c4c73959f29: Pull complete
+63e05266fc4b: Pull complete
+02fbd16c4b5a: Pull complete
+efad3c420eff: Pull complete
+3bc52b6571e8: Pull complete
+Digest: sha256:16c9145b43383b6885a8f13eda52e0a4b06fb88f0e2668d165628bc6ac5b9656
+Status: Downloaded newer image for node:latest
+ ---> 4f998e26046b
+Step 2/10 : LABEL maintainer="pinehead@linuxacademy.com"
+ ---> Running in 3cf762310cc3
+Removing intermediate container 3cf762310cc3
+ ---> 8075fc62815a
+Step 3/10 : LABEL org.label-schema.applicaiton=weather-app
+ ---> Running in 0f8a7c677456
+Removing intermediate container 0f8a7c677456
+ ---> 9f2a9dfb371f
+Step 4/10 : LABEL org.label-schema.version=v1.1
+ ---> Running in 5eea640f024d
+Removing intermediate container 5eea640f024d
+ ---> 147d070fabd3
+Step 5/10 : RUN mkdir -p /var/node
+ ---> Running in 1c5f0889cb0a
+Removing intermediate container 1c5f0889cb0a
+ ---> 40d35d65ec06
+Step 6/10 : ADD src/ /var/node/
+ ---> 92f08eae1ccf
+Step 7/10 : WORKDIR /var/node
+ ---> Running in 2278bd88f36a
+Removing intermediate container 2278bd88f36a
+ ---> 23c7650e0012
+Step 8/10 : RUN npm install
+ ---> Running in 5ba7a7f5b247
+added 169 packages from 223 contributors and audited 310 packages in 7.237s
+found 10 vulnerabilities (1 low, 3 moderate, 6 high)
+  run `npm audit fix` to fix them, or `npm audit` for details
+Removing intermediate container 5ba7a7f5b247
+ ---> 22033be8280b
+Step 9/10 : EXPOSE 3000
+ ---> Running in 3aed342a542c
+Removing intermediate container 3aed342a542c
+ ---> 78310ee65800
+Step 10/10 : CMD ./bin/www
+ ---> Running in 8b7435d1067b
+Removing intermediate container 8b7435d1067b
+ ---> e1cea18e3095
+Successfully built e1cea18e3095
+Successfully tagged lb-challenge_weather-app1:latest
+Building weather-app2
+Step 1/10 : FROM node
+ ---> 4f998e26046b
+Step 2/10 : LABEL maintainer="pinehead@linuxacademy.com"
+ ---> Using cache
+ ---> 8075fc62815a
+Step 3/10 : LABEL org.label-schema.applicaiton=weather-app
+ ---> Using cache
+ ---> 9f2a9dfb371f
+Step 4/10 : LABEL org.label-schema.version=v1.1
+ ---> Using cache
+ ---> 147d070fabd3
+Step 5/10 : RUN mkdir -p /var/node
+ ---> Using cache
+ ---> 40d35d65ec06
+Step 6/10 : ADD src/ /var/node/
+ ---> Using cache
+ ---> 92f08eae1ccf
+Step 7/10 : WORKDIR /var/node
+ ---> Using cache
+ ---> 23c7650e0012
+Step 8/10 : RUN npm install
+ ---> Using cache
+ ---> 22033be8280b
+Step 9/10 : EXPOSE 3000
+ ---> Using cache
+ ---> 78310ee65800
+Step 10/10 : CMD ./bin/www
+ ---> Using cache
+ ---> e1cea18e3095
+Successfully built e1cea18e3095
+Successfully tagged lb-challenge_weather-app2:latest
+Building weather-app3
+Step 1/10 : FROM node
+ ---> 4f998e26046b
+Step 2/10 : LABEL maintainer="pinehead@linuxacademy.com"
+ ---> Using cache
+ ---> 8075fc62815a
+Step 3/10 : LABEL org.label-schema.applicaiton=weather-app
+ ---> Using cache
+ ---> 9f2a9dfb371f
+Step 4/10 : LABEL org.label-schema.version=v1.1
+ ---> Using cache
+ ---> 147d070fabd3
+Step 5/10 : RUN mkdir -p /var/node
+ ---> Using cache
+ ---> 40d35d65ec06
+Step 6/10 : ADD src/ /var/node/
+ ---> Using cache
+ ---> 92f08eae1ccf
+Step 7/10 : WORKDIR /var/node
+ ---> Using cache
+ ---> 23c7650e0012
+Step 8/10 : RUN npm install
+ ---> Using cache
+ ---> 22033be8280b
+Step 9/10 : EXPOSE 3000
+ ---> Using cache
+ ---> 78310ee65800
+Step 10/10 : CMD ./bin/www
+ ---> Using cache
+ ---> e1cea18e3095
+Successfully built e1cea18e3095
+Successfully tagged lb-challenge_weather-app3:latest
+Building loadbalancer
+Step 1/4 : FROM nginx
+latest: Pulling from library/nginx
+68ced04f60ab: Pull complete
+28252775b295: Pull complete
+a616aa3b0bf2: Pull complete
+Digest: sha256:2539d4344dd18e1df02be842ffc435f8e1f699cfc55516e2cf2cb16b7a9aea0b
+Status: Downloaded newer image for nginx:latest
+ ---> 6678c7c2e56c
+Step 2/4 : COPY nginx.conf /etc/nginx/nginx.conf
+ ---> 51784ea9fbc1
+Step 3/4 : EXPOSE 80
+ ---> Running in 4484c53df4c6
+Removing intermediate container 4484c53df4c6
+ ---> 7642cdf15eaf
+Step 4/4 : CMD ["nginx", "-g", "daemon off;"]
+ ---> Running in f9685d4e2b90
+Removing intermediate container f9685d4e2b90
+ ---> ccd0329ed2f5
+Successfully built ccd0329ed2f5
+Successfully tagged nginx:latest
+Creating lb-challenge_weather-app2_1 ... done
+Creating lb-challenge_weather-app3_1 ... done
+Creating lb-challenge_weather-app1_1 ... done
+Creating lb-challenge_loadbalancer_1 ... done
+[root@ip-10-0-1-205 lb-challenge]# docker ps
+CONTAINER ID        IMAGE                       COMMAND                  CREATED             STATUS              PORTS                NAMES
+3bc3c64ff5c4        lb-challenge_weather-app3   "docker-entrypoint.s…"   5 minutes ago       Up 5 minutes        3000/tcp             lb-challenge_weather-app3_1
+0ec6e270e132        lb-challenge_weather-app1   "docker-entrypoint.s…"   5 minutes ago       Up 5 minutes        3000/tcp             lb-challenge_weather-app1_1
+18310eb80823        lb-challenge_weather-app2   "docker-entrypoint.s…"   5 minutes ago       Up 5 minutes        3000/tcp             lb-challenge_weather-app2_1
+1fe152281c1b        nginx                       "nginx -g 'daemon of…"   5 minutes ago       Up 5 minutes        0.0.0.0:80->80/tcp   lb-challenge_loadbalancer_1
+## Copy the public IP address and paste it into a new tab in your browser
+
+## Create a Docker service using Docker Swarm ##
+
+[root@ip-10-0-1-205 lb-challenge]# cd
+[root@ip-10-0-1-205 ~]# ls
+anaconda-ks.cfg  lb-challenge  swarm-token.txt
+[root@ip-10-0-1-205 ~]# cat swarm-token.txt
+Swarm initialized: current node (8tkzete435c2bp945h1zyq02e) is now a manager.
+
+To add a worker to this swarm, run the following command:
+
+    docker swarm join --token SWMTKN-1-4kyknknlgciaf582p24xz1k74pb4ztr9ul5s2kpxo8b22fwr45-cklcgrh8ya45yhddh2c3zodb9 10.0.1.205:2377
+
+To add a manager to this swarm, run 'docker swarm join-token manager' and follow the instructions.
+
+[root@ip-10-0-1-205 ~]#
+[root@ip-10-0-1-205 ~]#
+[root@ip-10-0-1-205 ~]# docker service create --name nginx-app --publish published=8080, target=80 --replicas=2 nginx
+invalid argument "published=8080," for "-p, --publish" flag: invalid field
+See 'docker service create --help'.
+[root@ip-10-0-1-205 ~]# docker service create --name nginx-app --publish published=8080,target=80 --replicas=2 nginx
+okqskimc7x4boye5kof11pxje
+overall progress: 2 out of 2 tasks
+1/2: running   [==================================================>]
+2/2: running   [==================================================>]
+verify: Service converged
+[root@ip-10-0-1-205 ~]# docker ps
+CONTAINER ID        IMAGE                       COMMAND                  CREATED             STATUS              PORTS                NAMES
+3ecdbb991c7d        nginx:latest                "nginx -g 'daemon of…"   59 seconds ago      Up 58 seconds       80/tcp               nginx-app.2.dhs9xodwnmc7yt4v8s9o5agi6
+3bc3c64ff5c4        lb-challenge_weather-app3   "docker-entrypoint.s…"   13 minutes ago      Up 13 minutes       3000/tcp             lb-challenge_weather-app3_1
+0ec6e270e132        lb-challenge_weather-app1   "docker-entrypoint.s…"   13 minutes ago      Up 13 minutes       3000/tcp             lb-challenge_weather-app1_1
+18310eb80823        lb-challenge_weather-app2   "docker-entrypoint.s…"   13 minutes ago      Up 13 minutes       3000/tcp             lb-challenge_weather-app2_1
+1fe152281c1b        nginx                       "nginx -g 'daemon of…"   13 minutes ago      Up 13 minutes       0.0.0.0:80->80/tcp   lb-challenge_loadbalancer_1
+[root@ip-10-0-1-205 ~]#
+
+
+## SECOND SERVER ##
+
+## Execute the command that was copied from the previous step ##
+
+[cloud_user@ip-10-0-1-188 ~]$ docker swarm join --token SWMTKN-1-4kyknknlgciaf582p24xz1k74pb4ztr9ul5s2kpxo8b22fwr45-cklcgrh8ya45yhddh2c3zodb9 10.0.1.205:2377
+This node joined a swarm as a worker.
+[cloud_user@ip-10-0-1-188 ~]$ docker ps
+CONTAINER ID        IMAGE               COMMAND                  CREATED             STATUS              PORTS               NAMES
+c8811d479c71        nginx:latest        "nginx -g 'daemon of…"   57 seconds ago      Up 49 seconds       80/tcp              nginx-app.1.vtdftvx871u0lsgxpcgd93l0h
+
+###################################
+Build Services with Docker Compose
+###################################
+Your team wants to find an easier way to deploy applications that consist of multiple containers and has decided to use Docker Compose. You have been tasked with setting up an internal blog so the team can write technical articles. This blog will consist of two services: a Ghost Blog service and a MySQL service. Both services will use volumes for persistent storage
+
+"Overview of Docker Compose: The Compose file provides a way to document and configure all of the application's service dependencies (databases, queues, caches, web service APIs, etc). Using the Compose command line tool you can create and start one or more containers for each dependency with a single command ( docker-compose up )"
+
+
+## Create a Ghost Blog and MySQL Service ## 
+
+[cloud_user@ip-10-0-1-212 ~]$ sudo -i
+[sudo] password for cloud_user:
+[root@ip-10-0-1-212 ~]#  vi docker-compose.yml
+[root@ip-10-0-1-212 ~]# cat docker-compose.yml
+ version: '3'
+ services:
+   ghost:
+     image: ghost:1-alpine
+     container_name: ghost-blog
+     restart: always
+     ports:
+       - 80:2368
+     environment:
+       database__client: mysql
+       database__connection__host: mysql
+       database__connection__user: root
+       database__connection__password: P4sSw0rd0!
+       database__connection__database: ghost
+     volumes:
+       - ghost-volume:/var/lib/ghost
+     depends_on:
+       - mysql
+
+   mysql:
+     image: mysql:5.7
+     container_name: ghost-db
+     restart: always
+     environment:
+       MYSQL_ROOT_PASSWORD: P4sSw0rd0!
+     volumes:
+       - mysql-volume:/var/lib/mysql
+
+ volumes:
+   ghost-volume:
+   mysql-volume:
+
+## Bring Up the Ghost Blog Service ##
+
+[root@ip-10-0-1-212 ~]# docker-compose up -d
+Creating network "root_default" with the default driver
+Creating volume "root_ghost-volume" with default driver
+Creating volume "root_mysql-volume" with default driver
+Pulling mysql (mysql:5.7)...
+5.7: Pulling from library/mysql
+c499e6d256d6: Pull complete
+22c4cdf4ea75: Pull complete
+6ff5091a5a30: Pull complete
+2fd3d1af9403: Pull complete
+0d9d26127d1d: Pull complete
+54a67d4e7579: Pull complete
+fe989230d866: Pull complete
+466a91a95e2f: Pull complete
+3e4554c238f1: Pull complete
+603b48ead88c: Pull complete
+1e86a9aa7171: Pull complete
+Digest: sha256:fbaeced79cfdae5d3c8d4a8c41e883f254f72ed7428c6b93a498824b76d97121
+Status: Downloaded newer image for mysql:5.7
+Pulling ghost (ghost:1-alpine)...
+1-alpine: Pulling from library/ghost
+aad63a933944: Pull complete
+17551d40f9c7: Pull complete
+1d4f35a66b6c: Pull complete
+d4192b8fc2e1: Pull complete
+e532684c3ad8: Pull complete
+3203310bc1ef: Pull complete
+f58c0fa9b780: Pull complete
+bca3215175ec: Pull complete
+188acc71ee30: Pull complete
+Digest: sha256:d017a3d1758f11cfe649d2fcc77afbd855f5e838601a0378085174651a096c7c
+Status: Downloaded newer image for ghost:1-alpine
+Creating ghost-db ... done
+Creating ghost-blog ... done
+[root@ip-10-0-1-212 ~]# docker ps
+CONTAINER ID        IMAGE               COMMAND                  CREATED             STATUS                         PORTS                 NAMES
+1381120a91ce        ghost:1-alpine      "docker-entrypoint.s…"   37 seconds ago      Restarting (1) 6 seconds ago                         ghost-blog
+d738392f4254        mysql:5.7           "docker-entrypoint.s…"   44 seconds ago      Up 37 seconds                  3306/tcp, 33060/tcp   ghost-db
+[root@ip-10-0-1-212 ~]# docker ps
+CONTAINER ID        IMAGE               COMMAND                  CREATED             STATUS                                  PORTS                 NAMES
+1381120a91ce        ghost:1-alpine      "docker-entrypoint.s…"   47 seconds ago      Restarting (1) Less than a second ago                         ghost-blog
+d738392f4254        mysql:5.7           "docker-entrypoint.s…"   54 seconds ago      Up 46 seconds                           3306/tcp, 33060/tcp   ghost-db
+[root@ip-10-0-1-212 ~]# docker ps
+CONTAINER ID        IMAGE               COMMAND                  CREATED              STATUS              PORTS                  NAMES
+1381120a91ce        ghost:1-alpine      "docker-entrypoint.s…"   54 seconds ago       Up 1 second         0.0.0.0:80->2368/tcp   ghost-blog
+d738392f4254        mysql:5.7           "docker-entrypoint.s…"   About a minute ago   Up 54 seconds       3306/tcp, 33060/tcp    ghost-db
+[root@ip-10-0-1-212 ~]# docker logs 1381120a91ce
