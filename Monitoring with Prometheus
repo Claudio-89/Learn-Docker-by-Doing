@@ -1,0 +1,341 @@
+######################################
+Monitoring Containers with Prometheus
+######################################
+In this lab, we'll walk through how to monitor containers using Docker stats, Prometheus, and cAdvisor.
+
+'Prometheus Overview: Prometheus is a free software application used for event monitoring and alerting. It records real-time metrics in a time series database (allowing for high dimensionality) built using a HTTP pull model, with flexible queries and real-time alerting'
+
+'cAdvisor Overview: cAdvisor (Container Advisor) provides container users an understanding of the resource usage and performance characteristics of their running containers. It is a running daemon that collects, aggregates, processes, and exports information about running containers'
+
+'Docker stats Overview: Extended description. The docker stats command returns a live data stream for running containers. To limit data to one or more specific containers, specify a list of container names or ids separated by a space. You can specify a stopped container but stopped containers do not return any data.'
+
+## Create prometheus.yml ##
+
+[root@ip-10-0-1-184 ~]# vim prometheus.yml
+[root@ip-10-0-1-184 ~]# cat prometheus.yml
+scrape_configs:
+- job_name: cadvisor
+  scrape_interval: 5s
+  static_configs:
+  - targets:
+    - cadvisor:8080
+[root@ip-10-0-1-184 ~]# ls
+anaconda-ks.cfg  prometheus.yml
+
+## Create the Prometheus Services ##
+
+[root@ip-10-0-1-184 ~]# vi docker-compose.yml
+[root@ip-10-0-1-184 ~]# cat docker-compose.yml
+version: '3'
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - 9090:9090
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    depends_on:
+      - cadvisor
+
+  cadvisor:
+    image: google/cadvisor:latest
+    container_name: cadvisor
+    ports:
+      - 8080:8080
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+[root@ip-10-0-1-184 ~]# ls
+anaconda-ks.cfg  docker-compose.yml  prometheus.yml
+[root@ip-10-0-1-184 ~]# docker-compose up -d
+Creating network "root_default" with the default driver
+Pulling cadvisor (google/cadvisor:latest)...
+latest: Pulling from google/cadvisor
+ff3a5c916c92: Pull complete
+44a45bb65cdf: Pull complete
+0bbe1a2fe2a6: Pull complete
+Digest: sha256:815386ebbe9a3490f38785ab11bda34ec8dacf4634af77b8912832d4f85dca04
+Status: Downloaded newer image for google/cadvisor:latest
+Pulling prometheus (prom/prometheus:latest)...
+latest: Pulling from prom/prometheus
+0f8c40e1270f: Pull complete
+626a2a3fee8c: Pull complete
+c28155f7eb79: Pull complete
+954c05febdeb: Pull complete
+e8af9b0860a9: Pull complete
+10888ee4f64b: Pull complete
+9d1b4f52acab: Pull complete
+59b2f7d48510: Pull complete
+1000ceb203a8: Pull complete
+e0f68e2bc6ce: Pull complete
+c914ff888424: Pull complete
+907ddadc7a02: Pull complete
+Digest: sha256:0d05276441fc3ec287025db43190873fd0088d1b16a45a0012a59f4cbd6e5be9
+Status: Downloaded newer image for prom/prometheus:latest
+Creating cadvisor ... done
+Creating prometheus ... done
+[root@ip-10-0-1-184 ~]# ls
+anaconda-ks.cfg  docker-compose.yml  prometheus.yml
+[root@ip-10-0-1-184 ~]# docker ps
+CONTAINER ID        IMAGE                    COMMAND                  CREATED             STATUS              PORTS                    NAMES
+d1d2ba9a9aac        prom/prometheus:latest   "/bin/prometheus --c…"   13 seconds ago      Up 12 seconds       0.0.0.0:9090->9090/tcp   prometheus
+27f522baa66c        google/cadvisor:latest   "/usr/bin/cadvisor -…"   15 seconds ago      Up 12 seconds       0.0.0.0:8080->8080/tcp   cadvisor
+b1e215e884e8        nginx                    "nginx -g 'daemon of…"   3 hours ago         Up 3 hours          0.0.0.0:80->80/tcp       nginx
+37e5a3c4eac6        redis                    "docker-entrypoint.s…"   3 hours ago         Up 3 hours          0.0.0.0:6379->6379/tcp   redis
+
+## Viewing the Prometheus Web Interface ##
+
+Let's so see in a web browser as well. Grab the public IP from the lab page, and browse to it, using the correct port number: http://<IP_ADDRESS>:9090/graph/
+
+We should see a Prometheus page. Click on Status in the top menu, and pick Targets. Now we should land on a screen showing a link for cadvisor.
+
+Now let's click on Graph (again, in the top menu). There's an Execute button. In the dropdown next to it, find container_startup_time_second. Then click Execute. Just below, we'll see Graph and Console tabs. They've each got the container startup time information we were hunting for. One tab is just prettier than the other.
+
+Just above that Execute* button and related dropdown is a web form field where we can type different expressions. Let's try that now, sticking **rate(container_cpu_usage_seconds_total{name="redis"}[1m]) in there. We can do this instead of using the dropdown if we want. If we hit Execute, the information below changes to reflect our new "query."
+
+## Investigating cAdvisor ##
+
+In a browser, navigate to http://<IP_ADDRESS>:8080/containers/. Take a peek around, then change the URL to one of our container names (like nginx) so we're at http://<IP_ADDRESS>:8080/docker/nginx/.
+
+## Stats in Docker ##
+If we run docker stats, we're going to get some output that looks a lot like docker ps, but this stays open and reports what's going on as far as the various aspects (CPU and memory usage, etc.) of our containers.
+
+[root@ip-10-0-1-184 ~]# docker stats
+CONTAINER ID        NAME                CPU %               MEM USAGE / LIMIT     MEM %               NET I/O             BLOCK I/O           PIDS
+d1d2ba9a9aac        prometheus          0.01%               32.47MiB / 989.3MiB   3.28%               1.24MB / 1.21MB     0B / 0B             7
+27f522baa66c        cadvisor            0.09%               47.26MiB / 989.3MiB   4.78%               421kB / 13.6MB      0B / 0B             10
+b1e215e884e8        nginx               0.00%               1.398MiB / 989.3MiB   0.14%               5.34kB / 5.2kB      0B / 0B             2
+37e5a3c4eac6        redis               0.16%               10.27MiB / 989.3MiB   1.04%               3.4kB / 8.24kB      0B / 0B             4
+
+## Prettier Stats ##
+We can format the output of docker stats differently if we want. And, if we really want to get fancy, we can do it in a shell script. Let's do it.
+
+[root@ip-10-0-1-184 ~]# vi stats.sh
+[root@ip-10-0-1-184 ~]# cat stats.sh
+#!/bin/bash
+
+docker stats --format "table {{.Name}} {{.ID}} {{.MemUsage}} {{.CPUPerc}}"
+[root@ip-10-0-1-184 ~]# chmod +x stats.sh
+[root@ip-10-0-1-184 ~]# ./stats.sh
+NAME CONTAINER ID MEM USAGE / LIMIT CPU %
+prometheus d1d2ba9a9aac 25.12MiB / 989.3MiB 0.01%
+cadvisor 27f522baa66c 47.44MiB / 989.3MiB 0.13%
+nginx b1e215e884e8 1.398MiB / 989.3MiB 0.00%
+redis 37e5a3c4eac6 10.27MiB / 989.3MiB 0.16%
+NAME CONTAINER ID MEM USAGE / LIMIT CPU %
+prometheus d1d2ba9a9aac 25.12MiB / 989.3MiB 0.01%
+cadvisor 27f522baa66c 47.44MiB / 989.3MiB 0.13%
+nginx b1e215e884e8 1.398MiB / 989.3MiB 0.00%
+redis 37e5a3c4eac6 10.27MiB / 989.3MiB 0.16%
+NAME CONTAINER ID MEM USAGE / LIMIT CPU %
+prometheus d1d2ba9a9aac 25.12MiB / 989.3MiB 0.00%
+cadvisor 27f522baa66c 47.44MiB / 989.3MiB 0.88%
+nginx b1e215e884e8 1.398MiB / 989.3MiB 0.00%
+redis 37e5a3c4eac6 10.27MiB / 989.3MiB 0.15%
+NAME CONTAINER ID MEM USAGE / LIMIT CPU %
+prometheus d1d2ba9a9aac 25.12MiB / 989.3MiB 0.00%
+cadvisor 27f522baa66c 47.44MiB / 989.3MiB 0.88%
+nginx b1e215e884e8 1.398MiB / 989.3MiB 0.00%
+redis 37e5a3c4eac6 10.27MiB / 989.3MiB 0.15%
+NAME CONTAINER ID MEM USAGE / LIMIT CPU %
+prometheus d1d2ba9a9aac 25.12MiB / 989.3MiB 0.00%
+cadvisor 27f522baa66c 47.44MiB / 989.3MiB 1.85%
+nginx b1e215e884e8 1.398MiB / 989.3MiB 0.00%
+redis 37e5a3c4eac6 10.27MiB / 989.3MiB 0.17%
+NAME CONTAINER ID MEM USAGE / LIMIT CPU %
+prometheus d1d2ba9a9aac 25.12MiB / 989.3MiB 0.00%
+cadvisor 27f522baa66c 47.44MiB / 989.3MiB 1.85%
+nginx b1e215e884e8 1.398MiB / 989.3MiB 0.00%
+redis 37e5a3c4eac6 10.27MiB / 989.3MiB 0.17%
+NAME CONTAINER ID MEM USAGE / LIMIT CPU %
+prometheus d1d2ba9a9aac 25.12MiB / 989.3MiB 0.92%
+cadvisor 27f522baa66c 47.45MiB / 989.3MiB 6.79%
+nginx b1e215e884e8 1.398MiB / 989.3MiB 0.00%
+redis 37e5a3c4eac6 10.27MiB / 989.3MiB 0.15%
+NAME CONTAINER ID MEM USAGE / LIMIT CPU %
+prometheus d1d2ba9a9aac 25.12MiB / 989.3MiB 0.92%
+cadvisor 27f522baa66c 47.45MiB / 989.3MiB 6.79%
+nginx b1e215e884e8 1.398MiB / 989.3MiB 0.00%
+redis 37e5a3c4eac6 10.27MiB / 989.3MiB 0.15%
+NAME CONTAINER ID MEM USAGE / LIMIT CPU %
+prometheus d1d2ba9a9aac 25.12MiB / 989.3MiB 0.00%
+cadvisor 27f522baa66c 47.45MiB / 989.3MiB 0.55%
+nginx b1e215e884e8 1.398MiB / 989.3MiB 0.00%
+redis 37e5a3c4eac6 10.27MiB / 989.3MiB 0.16%
+NAME CONTAINER ID MEM USAGE / LIMIT CPU %
+prometheus d1d2ba9a9aac 25.12MiB / 989.3MiB 0.00%
+cadvisor 27f522baa66c 47.45MiB / 989.3MiB 0.55%
+nginx b1e215e884e8 1.398MiB / 989.3MiB 0.00%
+redis 37e5a3c4eac6 10.27MiB / 989.3MiB 0.16%
+^C
+
+##########################################################
+Using Grafana with Prometheus for Alerting and Monitoring
+##########################################################
+In this learning activity, we will learn how to set up Prometheus and Grafana for alerting and monitoring.
+
+"Grafana Overview: Grafana is open source visualization and analytics software. It allows you to query, visualize, alert on, and explore your metrics no matter where they are stored. In plain English, it provides you with tools to turn your time-series database (TSDB) data into beautiful graphs and visualizations."
+
+
+## Configure Docker ##
+
+[root@ip-10-0-1-194 ~]# ls
+anaconda-ks.cfg  dashboards  docker-compose.yml  prometheus.yml
+[root@ip-10-0-1-194 ~]# vim /etc/docker/daemon.json
+[root@ip-10-0-1-194 ~]# cat /etc/docker/daemon.json
+{
+  "metrics-addr" : "0.0.0.0:9323",
+  "experimental" : true
+}
+[root@ip-10-0-1-194 ~]# systemctl restart docker
+
+## Update Prometheus ##
+
+[root@ip-10-0-1-194 ~]# vim prometheus.yml
+[root@ip-10-0-1-194 ~]# cat prometheus.yml
+scrape_configs:
+  - job_name: prometheus
+    scrape_interval: 5s
+    static_configs:
+    - targets:
+      - prometheus:9090
+      - node-exporter:9100
+      - pushgateway:9091
+      - cadvisor:8080
+
+  - job_name: docker
+    scrape_interval: 5s
+    static_configs:
+    - targets:
+      - 10.0.1.194:9323
+
+## Update Docker Compose ##
+
+[root@ip-10-0-1-194 ~]# vim docker-compose.yml
+[root@ip-10-0-1-194 ~]# cat docker-compose.yml
+version: '3'
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - 9090:9090
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - cadvisor
+  cadvisor:
+    image: google/cadvisor:latest
+    container_name: cadvisor
+    ports:
+      - 8080:8080
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+  pushgateway:
+    image: prom/pushgateway
+    container_name: pushgateway
+    ports:
+      - 9091:9091
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    restart: unless-stopped
+    expose:
+      - 9100
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    ports:
+      - 3000:3000
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=password
+    depends_on:
+      - prometheus
+      - cadvisor
+[root@ip-10-0-1-194 ~]# docker-compose up -d
+Pulling pushgateway (prom/pushgateway:)...
+latest: Pulling from prom/pushgateway
+0f8c40e1270f: Already exists
+626a2a3fee8c: Already exists
+07965f5a7bc1: Pull complete
+f0801f1351d9: Pull complete
+Digest: sha256:0a9031142481adfb964fe7f65e698d01a6260de982f0322bc44496c3dcc866f1
+Status: Downloaded newer image for prom/pushgateway:latest
+Pulling node-exporter (prom/node-exporter:latest)...
+latest: Pulling from prom/node-exporter
+49a2d53aa1af: Pull complete
+3589a6efd9ce: Pull complete
+190160031744: Pull complete
+Digest: sha256:a2f29256e53cc3e0b64d7a472512600b2e9410347d53cdc85b49f659c17e02ee
+Status: Downloaded newer image for prom/node-exporter:latest
+Pulling grafana (grafana/grafana:)...
+latest: Pulling from grafana/grafana
+4167d3e14976: Pull complete
+0d5a9cc58f0e: Pull complete
+e1aa5e237303: Pull complete
+127239e864ea: Pull complete
+1087e9836d13: Pull complete
+e8bc58ab1ed1: Pull complete
+097892888aa6: Pull complete
+03acbc89622c: Pull complete
+Digest: sha256:9d43bebe9f3a5d27647231e1fa760644fafcc09a1ad85eeae1df40c491841bd9
+Status: Downloaded newer image for grafana/grafana:latest
+Starting cadvisor      ... done
+Creating pushgateway   ... done
+Creating node-exporter ... done
+Starting prometheus    ... done
+Creating grafana       ... done
+[root@ip-10-0-1-194 ~]# docker ps
+CONTAINER ID        IMAGE                       COMMAND                  CREATED             STATUS              PORTS                    NAMES
+dfb04fa61b4f        grafana/grafana             "/run.sh"                17 seconds ago      Up 16 seconds       0.0.0.0:3000->3000/tcp   grafana
+138e71f0642c        prom/node-exporter:latest   "/bin/node_exporter"     18 seconds ago      Up 17 seconds       9100/tcp                 node-exporter
+c7d73743811b        prom/pushgateway            "/bin/pushgateway"       19 seconds ago      Up 17 seconds       0.0.0.0:9091->9091/tcp   pushgateway
+92e2e31eeabe        prom/prometheus:latest      "/bin/prometheus --c…"   32 minutes ago      Up 16 seconds       0.0.0.0:9090->9090/tcp   prometheus
+28a6f9535a8b        google/cadvisor:latest      "/usr/bin/cadvisor -…"   32 minutes ago      Up 17 seconds       0.0.0.0:8080->8080/tcp   cadvisor
+dae72a0adea0        nginx                       "nginx -g 'daemon of…"   32 minutes ago      Up 11 minutes       0.0.0.0:80->80/tcp       nginx
+c69e43c46b4f        redis                       "docker-entrypoint.s…"   32 minutes ago      Up 11 minutes       0.0.0.0:6379->6379/tcp   redis
+
+Lastly, let's verify that all of our Prometheus targets are healthy. Open a web browser tab, and go to http://PUBLIC_IP_ADDRESS:9090. Click Status, and select Targets. Everything should be up and running correctly.
+
+## Create a New Grafana Data Source ##
+
+Navigate to Grafana by entering http://PUBLIC_IP_ADDRESS:3000 in the address bar of your browser.
+
+Type "admin" for username and "password" for password. Click Log In.
+
+In the Grafana Home Dashboard, click the Add data source icon. For Name, type "Prometheus". Click into the Type field, and select Prometheus from the dropdown. Under URL, select http://localhost:9090. (But we're going to change this in a moment.) Navigate to the lab instructions page, and copy the private IP address to your clipboard. Then, replace "localhost" in the URL with the private IP address. (It should look like this: http://PRIVATE_IP_ADDRESS:9090). Click Save & Test
+
+## Add the Docker Dashboard to Grafana ##
+
+Click the plus sign (+) on the left side of the Grafana interface, and click Import. Then, navigate to the lab instructions page. Open the JSON file included in the Instructions & Tasks section in a new browser tab. Copy the contents of the file to your clipboard.
+
+Switch back to Grafana, and paste the text we just copied into the Or paste JSON field. Click Load. On the Import screen, click the dropdown menu for Prometheus, and select the Prometheus data source that we created earlier. Click Import.
+
+We now have our Grafana visualization. In the upper right corner, click on Refresh every 5m and select Last 5 minutes.
+
+Add an Email Notification Channel
+In the left sidebar, click the bell icon, and select Notification channels. Click Add channel. For Name, type "Email". In Email addresses, enter your email address. Click Save.
+
+## Create an Alert for CPU Usage ##
+
+Click the dashboard icon in the left sidebar, and select Home. Select the Docker and system monitoring dashboard. Click the CPU Usage graph, and select Edit from the dropdown.
+
+In the Metrics tab, click Add Query. Enter the following:
+
+sum(rate(process_cpu_seconds_total[1m])) * 100
+Click the eye icon on the right side of Row E to hide the new rule from view.
+
+Click the Alert tab, then Create Alert. Under Conditions, click into the query field and select E** from the dropdown. For IS ABOVE, type "75". Click **Test Rule.
+
+Click Notifications in the left sidebar, then click the + icon next to Sent to. Select Email Alerts. Next, click into the Message text box, and type "CPU usage is over 75%." Click the save button at the top of the page. In the save popup that opens, check the box next to Save current variables. In the description box, type "Add alerting". Then click Save.
+
