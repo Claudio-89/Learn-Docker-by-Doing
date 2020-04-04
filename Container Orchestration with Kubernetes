@@ -1,0 +1,370 @@
+############################################
+Setting Up a Kubernetes Cluster with Docker
+############################################
+In this hands-on lab, we will create a Kubernetes cluster with 3 nodes and then create a pod and service using Nginx
+
+"Kubernetes Overview: Docker is a platform and tool for building, distributing, and running Docker containers. ... Kubernetes is a container orchestration system for Docker containers that is more extensive than Docker Swarm and is meant to coordinate clusters of nodes at scale in production in an efficient manner."
+
+"Kublet Overview: The kubelet is responsible for maintaining a set of pods, which are composed of one or more containers, on a local system. Within a Kubernetes cluster, the kubelet functions as a local agent that watches for pod specs via the Kubernetes API server."
+
+"Kubeadm Overview: Kubeadm is a tool built to provide kubeadm init and kubeadm join as best-practice “fast paths” for creating Kubernetes clusters. kubeadm performs the actions necessary to get a minimum viable cluster up and running."
+
+"Kubectl Overview: Kubectl is a command line tool for controlling Kubernetes clusters. ... For details about each command, including all the supported flags and subcommands, see the kubectl reference documentation."
+
+"NGINX Overview: NGINX is open source software for web serving, reverse proxying, caching, load balancing, media streaming, and more. It started out as a web server designed for maximum performance and stability."
+
+"Kubernetes pod Overview: A Kubernetes pod is a group of containers that are deployed together on the same host. If you frequently deploy single containers, you can generally replace the word "pod" with "container" and accurately understand the concept."
+
+"SELinux Overview: Security-Enhanced Linux is a Linux kernel security module that provides a mechanism for supporting access control security policies, including mandatory access controls. SELinux is a set of kernel modifications and user-space tools that have been added to various Linux distributions."
+
+
+## Configure the Kubernetes Cluster ##
+
+1.In your Node 1 terminal window, add the Kubernetes repo to /etc/yum.repos.d.
+
+$ cat << EOF > /etc/yum.repos.d/kubernetes.repo
+
+2.Install the repo.
+
+[kubernetes]
+name=Kubernetes
+baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+exclude=kube*
+EOF
+
+3.Disable SELinux.
+
+$ setenforce 0
+
+4.Install Kubernetes.
+
+$ yum install -y kubelet-1.11.3 kubeadm-1.11.3 kubectl-1.11.3 --disableexcludes=kubernetes
+
+5.Enable and start kubelet.
+
+$ systemctl enable kubelet && systemctl start kubelet
+
+6.Run the following command to set up the bridge network:
+
+cat <<EOF > /etc/sysctl.d/k8s.conf
+net.bridge.bridge-nf-call-ip6tables = 1
+net.bridge.bridge-nf-call-iptables = 1
+EOF
+
+7.Reload the system so that our changes take effect.
+
+$ sysctl --system
+
+8.Initialize the master node, and set the code network CIDR to 10.244.0.0/16.
+
+$ kubeadm init --pod-network-cidr=10.244.0.0/16 --kubernetes-version=v1.11.3
+
+9.Run the following command to start using the cluster:
+
+$ mkdir -p $HOME/.kube
+$ sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+$ sudo chown $(id -u):$(id -g)$HOME/.kube/config
+
+10.Install Flannel on the master node.
+
+$ kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/v0.9.1/Documentation/kube-flannel.yml
+
+11.Repeat Steps 1-7 in your Node 2 and Node 3 terminal windows.
+
+12.In your Node 1 terminal window, run the following command:
+
+$ kubeadmin token create --print-join-command
+
+13. Copy the output of this command to your clipboard. Then, paste and run it in your Node 2 and Node 3 terminal windows.
+
+14.Run the following command to verify that everything is working correctly:
+
+$ kubectl get nodes # The output should show three nodes: two with the role of none and one with the role of master.
+
+## Create a Pod ##
+
+1.Create the pod.yml file
+
+$ vi pod.yml
+
+2. In the vi text editor, specify the following for the pod.yml file:
+
+apiVersion: v1
+kind: Pod
+metadata:
+ name: nginx-pod-demo
+ labels:
+   app: nginx-demo
+spec:
+ containers:
+ - image: nginx:latest
+   name: nginx-demo
+   ports:
+   - containerPort: 80
+   imagePullPolicy: Always
+
+3.Create the pod.
+
+$ kubectl create -f pod.yml
+
+4. Run the following command to view the pod we just created:
+
+$ kubectl get pods
+
+## Create the Service ##
+
+1.Create the service.yml file.
+
+$ vi service.yml
+
+2. In the vi text editor, specify the following for service.yml:
+
+kind: Service
+apiVersion: v1
+metadata:
+ name: service-demo
+spec:
+ selector:
+   app: nginx-demo
+ ports:
+ - protocol: TCP
+   port: 80
+   targetPort: 80
+ type: NodePort
+
+3.Create the service.
+
+$ kubectl create -f service.yml
+
+4.Run the following command to view the service we just created:
+
+$ kubectl get services
+
+5.Copy one of the public IP addresses from the lab instructions page, and paste it in a new tab of your browser, followed by a colon (:).
+
+6.Copy the service port number from your terminal window, and paste it in the address bar after the public IP address. It should look like this: PUBLIC_IP_ADDRESS:PORT_NUMBER
+
+7.Load the page. You should see the Nginx welcome screen.
+
+###########################
+Scaling Pods in Kubernetes
+###########################
+In this learning activity, you are tasked with scaling up a Kubernetes pod.
+
+"Overview Flannel: flannel is a virtual network that gives a subnet to each host for use with container runtimes. Platforms like Google's Kubernetes assume that each container (pod) has a unique, routable IP inside the cluster."
+
+## Complete the Kubernetes cluster ##
+
+- Initialize the cluster:
+
+$ kubeadm init --pod-network-cidr=10.244.0.0/16 --kubernetes-version=v1.11.3
+$ mkdir -p $HOME/.kube
+$ sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+$ sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+- Install Flannel on the master:
+
+$ kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/v0.9.1/Documentation/kube-flannel.yml
+
+## Create the deployment ##
+
+$ vi deployment.yml
+
+- Add the following to deployment.yml:
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: httpd-deployment
+  labels:
+    app: httpd
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: httpd
+  template:
+    metadata:
+      labels:
+        app: httpd
+    spec:
+      containers:
+      - name: httpd
+        image: httpd:latest
+        ports:
+        - containerPort: 80
+
+- Spin up the deployment:
+
+$ kubectl create -f deployment.yml
+
+## Create the Service ##
+
+$ vi service.yml
+
+- Add the following to service.yml:
+
+kind: Service
+apiVersion: v1
+metadata:
+  name: service-deployment
+spec:
+  selector:
+    app: httpd
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
+  type: NodePort
+
+- Create the service:
+
+$ kubectl create -f service.yml
+
+## Scale the deployment up to 5 replicas ##
+
+$ vi deployment.yml
+
+- Change the number of replicas to 5:
+
+spec:
+  replicas: 5
+
+- Apply the changes:
+
+$ kubectl apply -f deployment.yml
+
+## Scale the deployment down to 2 replicas ##
+
+$ vi deployment.yml
+
+- Change the number of replicas to 2:
+
+spec:
+  replicas: 2
+
+- Apply the changes:
+
+$ kubectl apply -f deployment.yml
+
+######################
+Creating a Helm Chart
+######################
+In this lab, we are going to install Helm and then create a Helm chart that we will use to create an httpd application.
+
+## Creating an Application Using Helm ##
+
+Install Helm
+
+Use curl to create a local copy of the Helm install script.
+
+$ curl https://raw.githubusercontent.com/helm/helm/master/scripts/get > /tmp/get_helm.sh
+
+Verify that this worked by running cat on the file we just downloaded.
+
+$ cat /tmp/get_helm.sh
+
+You should see a long output that indicates the file was downloaded correctly. Use clear to clear your screen.
+
+Next, we'll use chmod to modify access permissions for the install script.
+
+$ chmod 700 /tmp/get_helm.sh
+
+Set the version to v2.8.2.
+
+$ DESIRED_VERSION=v2.8.2 /tmp/get_helm.sh
+
+Then, initialize Helm.
+
+$ helm init --wait
+
+Finally, we need to give Helm the permissions it needs to work with Kubernetes. Run the following command:
+
+$ kubectl --namespace=kube-system create clusterrolebinding add-on-cluster-admin --clusterrole=cluster-admin --serviceaccount=kube-system:default
+
+Run helm ls to make sure our configuration is working properly. We should get no error response, indicating that there are no issues.
+
+## Create a Helm Chart ##
+
+Create a directory called charts and change your working directory to charts.
+
+$ mkdir charts
+$ cd charts
+
+Now let's create the chart for httpd.
+
+$ helm create httpd
+
+Run ls to verify that our directory was created correctly, then use clear to clear your screen.
+
+Navigate to the httpd directory.
+
+$ cd httpd/
+$ ls
+
+This directory contains two files: chart.yaml and values.yaml. We need to edit the values.yaml file.
+
+Open values.yaml in the vi text editor.
+
+$ vi values.yaml
+
+Under image, change the repository to httpd. Change the tag to latest. Under service, change type to NodePort.
+
+When you're finished, httpd/values.yaml should look like this:
+
+replicaCount: 1
+
+image:
+  repository: httpd
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: NodePort
+  port: 80
+
+ingress:
+  enabled: false
+  annotations: {}
+  path: /
+  hosts:
+    - chart-example.local
+  tls: []
+
+resources: {}
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+Then, exit the vi text editor.
+
+:wq
+
+## Create the Application ##
+
+Back out of the httpd directory.
+
+$ cd ../
+
+Now that we're back in the charts directory, let's install our application.
+
+$ helm install --name my-httpd ./httpd/
+
+Copy the commands listed under the NOTES section of the output, and then paste and run them. It should return the private IP address and port number of our application.
+
+Let's check to see if our pods have come online.
+
+$ kubectl get pods
+
+The output shows us the pod that was created by Helm. Now let's list the services.
+
+$ kubectl get services
+
+Locate the port number of my-httpd displayed in the output; we'll need it in a moment. Next, navigate to the lab instructions page, and copy the public IP address. Open a new browser tab, and paste in the public IP address. Add a colon (:) after it. Then, copy the port number of my-httpd from your terminal output and paste it after the colon in the address bar of your browser tab. Press Enter to load the page. If everything is working correctly, you should see a success message that says, "It works!"
