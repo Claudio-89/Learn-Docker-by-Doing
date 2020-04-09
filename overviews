@@ -1,0 +1,31 @@
+Beyond the Basics:"Overview of Docker Compose: The Compose file provides a way to document and configure all of the application's service dependencies (databases, queues, caches, web service APIs, etc). Using the Compose command line tool you can create and start one or more containers for each dependency with a single command ( docker-compose up )"
+
+Container Orchestration with Kubernetes:"Kubernetes Overview: Docker is a platform and tool for building, distributing, and running Docker containers. ... Kubernetes is a container orchestration system for Docker containers that is more extensive than Docker Swarm and is meant to coordinate clusters of nodes at scale in production in an efficient manner."
+
+Container Orchestration with Kubernetes:"Kublet Overview: The kubelet is responsible for maintaining a set of pods, which are composed of one or more containers, on a local system. Within a Kubernetes cluster, the kubelet functions as a local agent that watches for pod specs via the Kubernetes API server."
+
+Container Orchestration with Kubernetes:"Kubeadm Overview: Kubeadm is a tool built to provide kubeadm init and kubeadm join as best-practice “fast paths” for creating Kubernetes clusters. kubeadm performs the actions necessary to get a minimum viable cluster up and running."
+
+Container Orchestration with Kubernetes:"Kubectl Overview: Kubectl is a command line tool for controlling Kubernetes clusters. ... For details about each command, including all the supported flags and subcommands, see the kubectl reference documentation."
+
+Container Orchestration with Kubernetes:"NGINX Overview: NGINX is open source software for web serving, reverse proxying, caching, load balancing, media streaming, and more. It started out as a web server designed for maximum performance and stability."
+
+Container Orchestration with Kubernetes:"Kubernetes pod Overview: A Kubernetes pod is a group of containers that are deployed together on the same host. If you frequently deploy single containers, you can generally replace the word "pod" with "container" and accurately understand the concept."
+
+Container Orchestration with Kubernetes:"SELinux Overview: Security-Enhanced Linux is a Linux kernel security module that provides a mechanism for supporting access control security policies, including mandatory access controls. SELinux is a set of kernel modifications and user-space tools that have been added to various Linux distributions."
+
+Containe: Orchestration with Kubernetes:"Overview Flannel: flannel is a virtual network that gives a subnet to each host for use with container runtimes. Platforms like Google's Kubernetes assume that each container (pod) has a unique, routable IP inside the cluster."
+
+Container Orchestration with Kubernetes:"Helm Overview: Helm is a tool that streamlines installing and managing Kubernetes applications. Think of it like apt/yum/homebrew for Kubernetes. Helm renders your templates and communicates with the Kubernetes API."
+
+Monitoring with Prometheus:'Prometheus Overview: Prometheus is a free software application used for event monitoring and alerting. It records real-time metrics in a time series database (allowing for high dimensionality) built using a HTTP pull model, with flexible queries and real-time alerting'
+
+Monitoring with Prometheus:'cAdvisor Overview: cAdvisor (Container Advisor) provides container users an understanding of the resource usage and performance characteristics of their running containers. It is a running daemon that collects, aggregates, processes, and exports information about running containers'
+
+Monitoring with Prometheus:'Docker stats Overview: Extended description. The docker stats command returns a live data stream for running containers. To limit data to one or more specific containers, specify a list of container names or ids separated by a space. You can specify a stopped container but stopped containers do not return any data.'
+
+Monitoring with Prometheus:"Grafana Overview: Grafana is open source visualization and analytics software. It allows you to query, visualize, alert on, and explore your metrics no matter where they are stored. In plain English, it provides you with tools to turn your time-series database (TSDB) data into beautiful graphs and visualizations."
+
+Working with Docker Swarm:"Docker Swarm Overview: A Docker Swarm is a group of either physical or virtual machines that are running the Docker application and that have been configured to join together in a cluster. ... Docker swarm is a container orchestration tool, meaning that it allows the user to manage multiple containers deployed across multiple host machines"
+
+Working with Docker Swarm:"HTTPD overview: Apache HTTP Server, also known as httpd (Hypertext Transfer Protocol Daemon), is a web server. It listens to one or more TCP ports (usually port 80) for incoming requests from browsers and serves the requested files accordingly. In addition to its basic operation, httpd can be extended with modules."
