@@ -14,7 +14,7 @@ Container Orchestration with Kubernetes:"Kubernetes pod Overview: A Kubernetes p
 
 Container Orchestration with Kubernetes:"SELinux Overview: Security-Enhanced Linux is a Linux kernel security module that provides a mechanism for supporting access control security policies, including mandatory access controls. SELinux is a set of kernel modifications and user-space tools that have been added to various Linux distributions."
 
-Containe: Orchestration with Kubernetes:"Overview Flannel: flannel is a virtual network that gives a subnet to each host for use with container runtimes. Platforms like Google's Kubernetes assume that each container (pod) has a unique, routable IP inside the cluster."
+Container Orchestration with Kubernetes:"Overview Flannel: flannel is a virtual network that gives a subnet to each host for use with container runtimes. Platforms like Google's Kubernetes assume that each container (pod) has a unique, routable IP inside the cluster."
 
 Container Orchestration with Kubernetes:"Helm Overview: Helm is a tool that streamlines installing and managing Kubernetes applications. Think of it like apt/yum/homebrew for Kubernetes. Helm renders your templates and communicates with the Kubernetes API."
 
