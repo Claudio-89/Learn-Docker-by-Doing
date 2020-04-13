@@ -91,3 +91,40 @@ Containers solve a great many problems, but they aren’t cure-alls. Some of the
 Docker containers are not virtual machines
 
 The most common conceptual mistake people make with containers is to equate them with virtual machines. However, because containers and virtual machines use different isolation mechanisms, they have distinctly different advantages and disadvantages.
+
+
+Most common docker commands
+
+docker –version: This command is used to get the currently installed version of docker
+
+docker pull: This command is used to pull images from the docker repository
+
+docker run:  This command is used to create a container from an image
+
+docker ps: This command is used to list the running containers
+
+docker ps -a: This command is used to show all the running and exited containers
+
+docker exec: This command is used to access the running container
+
+docker stop: This command stops a running container
+
+docker kill: This command kills the container by stopping its execution immediately. The difference between ‘docker kill’ and ‘docker stop’ is that ‘docker stop’ gives the container time to shutdown gracefully, in situations when it is taking too much time for getting the container to stop, one can opt to kill it
+
+docker commit: This command creates a new image of an edited container on the local system
+
+docker login: This command is used to login to the docker hub repository
+
+docker push: This command is used to push an image to the docker hub repository
+
+docker images: This command lists all the locally stored docker images
+
+docker rm: This command is used to delete a stopped container
+
+docker rmi: This command is used to delete an image from local storage
+
+docker build: This command is used to build an image from a specified docker file
+
+
+
+
